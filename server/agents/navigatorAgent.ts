@@ -4,6 +4,7 @@
 
 import { BaseAgent, AgentContext } from './baseAgent';
 import { NavigatorResponse } from '../schemas/agentSchemas';
+import { logger } from '../config/logger';
 import { nanoid } from 'nanoid';
 
 export class NavigatorAgent extends BaseAgent {
@@ -15,6 +16,14 @@ export class NavigatorAgent extends BaseAgent {
    * Generate feedforward guidance
    */
   async generateResponse(context: AgentContext, userInput?: string): Promise<NavigatorResponse> {
+    logger.debug('NavigatorAgent.generateResponse starting', {
+      sessionId: context.sessionId,
+      agentType: this.agentType,
+      hasUserInput: !!userInput,
+      userInputLength: userInput?.length || 0,
+      willCallOpenAI: true
+    });
+
     // Enhanced context for Navigator with forward-looking focus
     const navigatorContext: AgentContext = {
       ...context,
@@ -25,7 +34,27 @@ export class NavigatorAgent extends BaseAgent {
       }
     };
 
-    const response = await super.generateResponse(navigatorContext, userInput);
+    let response;
+    let rawResponse;
+    try {
+      response = await super.generateResponse(navigatorContext, userInput);
+      rawResponse = response; // Capture raw before transformations
+      
+      logger.debug('NavigatorAgent received response from OpenAI', {
+        sessionId: context.sessionId,
+        agentType: this.agentType,
+        responseType: (response as any)?.type,
+        hasGuidance: !!(response as any)?.guidance,
+        hasNextSteps: !!(response as any)?.next_steps
+      });
+    } catch (error) {
+      logger.error('NavigatorAgent OpenAI call failed', {
+        sessionId: context.sessionId,
+        agentType: this.agentType,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
+    }
     
     // Ensure response is properly typed
     if (response.type !== 'feedforward') {
@@ -63,6 +92,13 @@ export class NavigatorAgent extends BaseAgent {
       lastAnalystScores?: Array<{ field: string; score: number }>;
     }
   ): Promise<NavigatorResponse> {
+    logger.debug('NavigatorAgent.generateMidConversationGuidance starting', {
+      sessionId: context.sessionId,
+      agentType: this.agentType,
+      turnCount: conversationState.turnCount,
+      hasAnalystScores: !!conversationState.lastAnalystScores,
+      willCallOpenAI: true
+    });
     let guidancePrompt = `The student has completed ${conversationState.turnCount} interaction(s). Provide guidance for their next response.`;
 
     // Include analyst feedback context if available

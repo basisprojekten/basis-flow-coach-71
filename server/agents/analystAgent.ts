@@ -4,6 +4,7 @@
 
 import { BaseAgent, AgentContext } from './baseAgent';
 import { AnalystResponse } from '../schemas/agentSchemas';
+import { logger } from '../config/logger';
 import { nanoid } from 'nanoid';
 
 export class AnalystAgent extends BaseAgent {
@@ -15,6 +16,14 @@ export class AnalystAgent extends BaseAgent {
    * Generate iterative feedback for student response
    */
   async generateResponse(context: AgentContext, userInput: string): Promise<AnalystResponse> {
+    logger.debug('AnalystAgent.generateResponse starting', {
+      sessionId: context.sessionId,
+      agentType: this.agentType,
+      hasUserInput: !!userInput,
+      userInputLength: userInput?.length || 0,
+      willCallOpenAI: true
+    });
+
     if (!userInput || userInput.trim().length === 0) {
       throw new Error('Analyst agent requires user input to analyze');
     }
@@ -35,7 +44,27 @@ export class AnalystAgent extends BaseAgent {
       ]
     };
 
-    const response = await super.generateResponse(analystContext);
+    let response;
+    let rawResponse;
+    try {
+      response = await super.generateResponse(analystContext);
+      rawResponse = response; // Capture raw before transformations
+      
+      logger.debug('AnalystAgent received response from OpenAI', {
+        sessionId: context.sessionId,
+        agentType: this.agentType,
+        responseType: (response as any)?.type,
+        hasRubric: !!(response as any)?.rubric,
+        hasFeedback: !!(response as any)?.past_only_feedback
+      });
+    } catch (error) {
+      logger.error('AnalystAgent OpenAI call failed', {
+        sessionId: context.sessionId,
+        agentType: this.agentType,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
+    }
     
     // Ensure response is properly typed and has segment ID
     if (response.type !== 'iterative_feedback') {
