@@ -213,6 +213,18 @@ router.post('/:id/input', validateAgentResponse('analyst'), async (req, res) => 
     // Wait for all agent responses
     await Promise.all(agentPromises);
 
+    // Log debug information for agent feedback
+    Object.entries(agentFeedback).forEach(([agentType, feedback]) => {
+      if (feedback && typeof feedback === 'object' && 'error' in feedback) {
+        logger.debug('Agent feedback contains error', {
+          sessionId,
+          agentType,
+          error: feedback.error,
+          hasRaw: 'raw' in feedback
+        });
+      }
+    });
+
     // Generate AI roleplay response (mock for now)
     const aiResponse = await generateAIRoleplayResponse(content, agentContext);
     
@@ -228,15 +240,39 @@ router.post('/:id/input', validateAgentResponse('analyst'), async (req, res) => 
     // Update session state
     const updatedSession = await sessionManager.getSession(sessionId);
 
-    res.json({
+    // Prepare response payload
+    const responsePayload: any = {
       session: {
         id: updatedSession!.id,
         messageCount: updatedSession!.conversationHistory.length,
         lastActivity: updatedSession!.metadata.lastActivityAt
       },
-      aiResponse,
-      agentFeedback
-    });
+      aiResponse
+    };
+
+    // In development mode, expose full agent feedback for debugging
+    // In production, only include validated/successful agent outputs
+    if (process.env.NODE_ENV !== 'production') {
+      responsePayload.agentFeedback = agentFeedback;
+      logger.debug('Development mode: exposing full agent feedback', {
+        sessionId,
+        feedbackKeys: Object.keys(agentFeedback),
+        hasErrors: Object.values(agentFeedback).some(f => f && typeof f === 'object' && 'error' in f)
+      });
+    } else {
+      // Production: only include successful agent responses
+      const cleanFeedback: any = {};
+      Object.entries(agentFeedback).forEach(([agentType, feedback]) => {
+        if (feedback && typeof feedback === 'object' && !('error' in feedback)) {
+          cleanFeedback[agentType] = feedback;
+        }
+      });
+      if (Object.keys(cleanFeedback).length > 0) {
+        responsePayload.agentFeedback = cleanFeedback;
+      }
+    }
+
+    res.json(responsePayload);
 
   } catch (error) {
     logger.error('Session input processing failed', {
