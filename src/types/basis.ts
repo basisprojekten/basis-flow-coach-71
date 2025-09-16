@@ -82,18 +82,22 @@ export interface ConversationMessage {
 
 export interface NavigatorResponse {
   type: 'feedforward';
-  next_focus: string;
-  micro_objective: string;
-  guardrails: string[];
-  user_prompt: string;
+  next_focus?: string;
+  micro_objective?: string;
+  guardrails?: string[];
+  user_prompt?: string;
+  guidance?: string;
+  nextSteps?: string[];
 }
 
 export interface AnalystResponse {
   type: 'iterative_feedback';
-  segment_id: string;
-  rubric: RubricScore[];
-  evidence_quotes: string[];
-  past_only_feedback: string;
+  segment_id?: string;
+  rubric?: RubricScore[] | Record<string, number>;
+  evidence_quotes?: string[];
+  past_only_feedback?: string;
+  feedback?: string;
+  suggestions?: string[];
 }
 
 export interface ReviewerResponse {
