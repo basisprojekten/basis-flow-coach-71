@@ -137,28 +137,47 @@ class SessionManager {
       config: exerciseConfig
     };
 
+    // Build and log insert payloads
+    const payloadForLog = {
+      id: 'DB_GENERATED_UUID',
+      mode: config.mode,
+      exercise_id: config.exerciseCode,
+      lesson_id: config.lessonCode,
+      state: sessionState,
+      started_at: new Date().toISOString(),
+      last_activity_at: new Date().toISOString()
+    };
+    logger.info('Preparing session insert payload', { payload: payloadForLog });
+
+    const insertPayload = {
+      mode: config.mode,
+      exercise_id: config.exerciseCode,
+      lesson_id: config.lessonCode,
+      state: sessionState,
+      started_at: payloadForLog.started_at,
+      last_activity_at: payloadForLog.last_activity_at
+    };
+    logger.info('Final insert payload for Supabase', { payload: insertPayload });
+
     // Insert session into database
     const { data: dbSession, error } = await supabase
       .from('sessions')
-      .insert({
-        id: sessionId,
-        mode: config.mode,
-        exercise_id: config.exerciseCode,
-        lesson_id: config.lessonCode,
-        state: sessionState,
-        started_at: new Date().toISOString(),
-        last_activity_at: new Date().toISOString()
-      })
+      .insert(insertPayload)
       .select()
       .single();
 
     if (error || !dbSession) {
-      logger.error('Failed to create session in database', { error });
-      throw new Error('Failed to create session');
+      logger.error('Failed to create session in database', { 
+        code: (error as any)?.code, 
+        message: (error as any)?.message, 
+        details: (error as any)?.details, 
+        hint: (error as any)?.hint 
+      });
+      throw new Error(`Failed to create session: ${(error as any)?.message} | details: ${(error as any)?.details ?? 'n/a'}`);
     }
 
     const session: SessionState = {
-      id: sessionId,
+      id: dbSession.id,
       exerciseId: config.exerciseCode,
       lessonId: config.lessonCode,
       mode: config.mode,

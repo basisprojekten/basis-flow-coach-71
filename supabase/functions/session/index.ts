@@ -163,27 +163,29 @@ async function createSession(config: {
   };
 
   // Insert session into database
+  const insertPayload = {
+    mode: config.mode,
+    exercise_id: config.exerciseCode,
+    lesson_id: config.lessonCode,
+    state: sessionState,
+    started_at: new Date().toISOString(),
+    last_activity_at: new Date().toISOString()
+  };
+  console.log('Inserting session payload', insertPayload);
+
   const { data: dbSession, error } = await supabase
     .from('sessions')
-    .insert({
-      id: sessionId,
-      mode: config.mode,
-      exercise_id: config.exerciseCode,
-      lesson_id: config.lessonCode,
-      state: sessionState,
-      started_at: new Date().toISOString(),
-      last_activity_at: new Date().toISOString()
-    })
+    .insert(insertPayload)
     .select()
     .single();
 
   if (error || !dbSession) {
-    console.error('Failed to create session in database', { error });
-    throw new Error('Failed to create session');
+    console.error('Failed to create session in database', { message: error?.message, details: (error as any)?.details });
+    throw { __type: 'SESSION_INSERT_ERROR', message: error?.message || 'Unknown error', details: (error as any)?.details } as any;
   }
 
   const session: SessionState = {
-    id: sessionId,
+    id: dbSession.id,
     exerciseId: config.exerciseCode,
     lessonId: config.lessonCode,
     mode: config.mode,
@@ -200,7 +202,7 @@ async function createSession(config: {
   };
   
   console.log('Session created', {
-    sessionId,
+    sessionId: dbSession.id,
     mode: config.mode,
     exerciseCode: config.exerciseCode,
     lessonCode: config.lessonCode
@@ -413,35 +415,44 @@ Deno.serve(async (req: Request): Promise<Response> => {
         }
 
         // Create session
-        const session = await createSession({
-          mode: lessonCode ? 'lesson' : 'exercise',
-          exerciseCode,
-          lessonCode
-        });
+        try {
+          const session = await createSession({
+            mode: lessonCode ? 'lesson' : 'exercise',
+            exerciseCode,
+            lessonCode
+          });
 
-        // Generate initial Navigator guidance if feedforward is enabled
-        let initialGuidance = null;
-        
-        if (session.config.toggles.feedforward) {
-          // Mock initial guidance for demo
-          initialGuidance = {
-            navigator: {
-              guidance: "Welcome! You'll be practicing with a concerned parent scenario. Focus on building rapport while maintaining professional boundaries.",
-              suggestions: ["Start with active listening", "Ask open-ended questions", "Show empathy"]
-            }
-          };
+          // Generate initial Navigator guidance if feedforward is enabled
+          let initialGuidance = null;
+          
+          if (session.config.toggles.feedforward) {
+            // Mock initial guidance for demo
+            initialGuidance = {
+              navigator: {
+                guidance: "Welcome! You'll be practicing with a concerned parent scenario. Focus on building rapport while maintaining professional boundaries.",
+                suggestions: ["Start with active listening", "Ask open-ended questions", "Show empathy"]
+              }
+            };
+          }
+
+          return jsonResponse({
+            session: {
+              id: session.id,
+              mode: session.mode,
+              config: session.config,
+              protocols: session.protocols,
+              startedAt: session.metadata.startedAt
+            },
+            initialGuidance
+          });
+        } catch (e: any) {
+          console.error('Session creation failed', { message: e?.message, details: e?.details });
+          return jsonResponse({
+            error: 'SESSION_CREATE_FAILED',
+            message: e?.message || 'Failed to create session',
+            details: e?.details
+          }, 500);
         }
-
-        return jsonResponse({
-          session: {
-            id: session.id,
-            mode: session.mode,
-            config: session.config,
-            protocols: session.protocols,
-            startedAt: session.metadata.startedAt
-          },
-          initialGuidance
-        });
       }
 
       case "sendInput": {
