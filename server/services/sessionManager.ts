@@ -70,41 +70,55 @@ class SessionManager {
     // Get exercise configuration from database
     let exerciseConfig: ExerciseConfig;
     
+    // Define demo exercise configuration for fallback
+    const demoExerciseConfig: ExerciseConfig = {
+      id: 'demo-001',
+      title: 'Confidentiality Discussion Training',
+      caseId: 'concerned-parent-case',
+      toggles: {
+        feedforward: true,
+        iterative: true,
+        mode: 'text',
+        skipRoleplayForGlobalFeedback: false
+      },
+      focusHint: 'Practice maintaining professional boundaries while showing empathy',
+      protocols: ['basis-v1']
+    };
+    
     if (config.exerciseCode) {
-      const { data: exercise, error } = await supabase
-        .from('exercises')
-        .select('*')
-        .eq('id', config.exerciseCode)
-        .single();
-        
-      if (error || !exercise) {
-        logger.error('Exercise not found', { exerciseCode: config.exerciseCode, error });
-        throw new Error(`Exercise not found: ${config.exerciseCode}`);
+      try {
+        const { data: exercise, error } = await supabase
+          .from('exercises')
+          .select('*')
+          .eq('id', config.exerciseCode)
+          .single();
+          
+        if (error || !exercise) {
+          logger.warn('Exercise not found, falling back to demo configuration', { 
+            exerciseCode: config.exerciseCode, 
+            error: error?.message 
+          });
+          exerciseConfig = demoExerciseConfig;
+        } else {
+          exerciseConfig = {
+            id: exercise.id,
+            title: exercise.title,
+            caseId: exercise.case_id,
+            toggles: exercise.toggles as any,
+            focusHint: exercise.focus_hint || '',
+            protocols: exercise.protocols as string[]
+          };
+        }
+      } catch (err) {
+        logger.warn('Failed to fetch exercise, falling back to demo configuration', { 
+          exerciseCode: config.exerciseCode, 
+          error: err 
+        });
+        exerciseConfig = demoExerciseConfig;
       }
-      
-      exerciseConfig = {
-        id: exercise.id,
-        title: exercise.title,
-        caseId: exercise.case_id,
-        toggles: exercise.toggles as any,
-        focusHint: exercise.focus_hint || '',
-        protocols: exercise.protocols as string[]
-      };
     } else {
-      // Default exercise configuration
-      exerciseConfig = {
-        id: 'demo-001',
-        title: 'Confidentiality Discussion Training',
-        caseId: 'concerned-parent-case',
-        toggles: {
-          feedforward: true,
-          iterative: true,
-          mode: 'text',
-          skipRoleplayForGlobalFeedback: false
-        },
-        focusHint: 'Practice maintaining professional boundaries while showing empathy',
-        protocols: ['basis-v1']
-      };
+      // Use demo configuration when no exercise code provided
+      exerciseConfig = demoExerciseConfig;
     }
 
     const initialMessage: ConversationMessage = {
