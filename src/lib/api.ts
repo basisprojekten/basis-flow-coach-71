@@ -1,6 +1,7 @@
 // BASIS Training Platform - API Client
 // Handles all communication with the backend services
 
+import { supabase } from '@/integrations/supabase/client';
 import {
   Exercise,
   Lesson,
@@ -33,30 +34,6 @@ const API_BASE_URL = getApiBaseUrl();
 // Check if we're using Supabase Edge Functions
 const isUsingSupabaseFunctions = API_BASE_URL.includes('supabase.co/functions');
 
-// Helper to build correct endpoint URLs for action-based routing
-function buildEndpointUrl(endpoint: string): string {
-  if (isUsingSupabaseFunctions) {
-    // For Supabase Edge Functions, map to function name only (no subpaths)
-    const cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
-    
-    // Map API endpoints to their corresponding Edge Functions
-    if (cleanEndpoint.startsWith('session')) {
-      return `${API_BASE_URL}/session`;
-    } else if (cleanEndpoint.startsWith('health')) {
-      return `${API_BASE_URL}/health`;
-    } else if (cleanEndpoint.startsWith('transcript')) {
-      return `${API_BASE_URL}/transcript`;
-    }
-    
-    // Default: assume the endpoint matches the function name
-    const functionName = cleanEndpoint.split('/')[0];
-    return `${API_BASE_URL}/${functionName}`;
-  } else {
-    // For Express/local development, use the endpoint as-is
-    return `${API_BASE_URL}${endpoint}`;
-  }
-}
-
 // Error handling utility
 class BasisApiError extends Error {
   constructor(
@@ -70,12 +47,46 @@ class BasisApiError extends Error {
   }
 }
 
-// Generic API request handler
+// Generic API request handler for Supabase Edge Functions
+async function supabaseApiRequest<T>(
+  functionName: string,
+  body: any = {}
+): Promise<T> {
+  try {
+    const { data, error } = await supabase.functions.invoke(functionName, {
+      body
+    });
+    
+    if (error) {
+      throw new BasisApiError(
+        error.status || 500,
+        error.message || 'SUPABASE_FUNCTION_ERROR',
+        error.message || 'Supabase function error',
+        error
+      );
+    }
+
+    return data as T;
+  } catch (error) {
+    if (error instanceof BasisApiError) {
+      throw error;
+    }
+    
+    // Network or parsing errors
+    throw new BasisApiError(
+      0,
+      'NETWORK_ERROR',
+      error instanceof Error ? error.message : 'Unknown network error'
+    );
+  }
+}
+
+// Legacy API request handler for local development
 async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = buildEndpointUrl(endpoint);
+  const url = `${API_BASE_URL}${endpoint}`;
   
   const config: RequestInit = {
     headers: {
@@ -194,12 +205,9 @@ export const sessionApi = {
   // Start a new training session
   async start(request: StartSessionRequest): Promise<{ session: Session; initialGuidance?: AgentResponseSet }> {
     if (isUsingSupabaseFunctions) {
-      return apiRequest('/session', {
-        method: 'POST',
-        body: JSON.stringify({
-          action: 'start',
-          ...request
-        }),
+      return supabaseApiRequest('session', {
+        action: 'start',
+        ...request
       });
     } else {
       return apiRequest('/session', {
@@ -216,13 +224,10 @@ export const sessionApi = {
     agentFeedback: AgentResponseSet;
   }> {
     if (isUsingSupabaseFunctions) {
-      return apiRequest('/session', {
-        method: 'POST',
-        body: JSON.stringify({
-          action: 'sendInput',
-          sessionId,
-          ...input
-        }),
+      return supabaseApiRequest('session', {
+        action: 'sendInput',
+        sessionId,
+        ...input
       });
     } else {
       return apiRequest(`/session/${sessionId}/input`, {
@@ -235,12 +240,9 @@ export const sessionApi = {
   // Get session state
   async get(sessionId: string): Promise<Session> {
     if (isUsingSupabaseFunctions) {
-      return apiRequest('/session', {
-        method: 'POST',
-        body: JSON.stringify({
-          action: 'get',
-          sessionId
-        }),
+      return supabaseApiRequest('session', {
+        action: 'get',
+        sessionId
       });
     } else {
       return apiRequest(`/session/${sessionId}`);
@@ -256,12 +258,9 @@ export const sessionApi = {
     keyInsights: string[];
   }> {
     if (isUsingSupabaseFunctions) {
-      return apiRequest('/session', {
-        method: 'POST',
-        body: JSON.stringify({
-          action: 'getSummary',
-          sessionId
-        }),
+      return supabaseApiRequest('session', {
+        action: 'getSummary',
+        sessionId
       });
     } else {
       return apiRequest(`/session/${sessionId}/summary`);
@@ -271,12 +270,9 @@ export const sessionApi = {
   // End session
   async end(sessionId: string): Promise<void> {
     if (isUsingSupabaseFunctions) {
-      return apiRequest('/session', {
-        method: 'POST',
-        body: JSON.stringify({
-          action: 'end',
-          sessionId
-        }),
+      return supabaseApiRequest('session', {
+        action: 'end',
+        sessionId
       });
     } else {
       return apiRequest(`/session/${sessionId}`, {
@@ -298,12 +294,9 @@ export const transcriptApi = {
     };
   }> {
     if (isUsingSupabaseFunctions) {
-      return apiRequest('/transcript', {
-        method: 'POST',
-        body: JSON.stringify({
-          action: 'review',
-          ...request
-        }),
+      return supabaseApiRequest('transcript', {
+        action: 'review',
+        ...request
       });
     } else {
       return apiRequest('/transcript/review', {
@@ -336,7 +329,11 @@ export const systemApi = {
     timestamp: Date;
     services: Record<string, 'ok' | 'error'>;
   }> {
-    return apiRequest('/health');
+    if (isUsingSupabaseFunctions) {
+      return supabaseApiRequest('health', {});
+    } else {
+      return apiRequest('/health');
+    }
   },
 
   // Get system configuration (non-sensitive)
