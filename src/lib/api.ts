@@ -131,21 +131,41 @@ async function apiRequest<T>(
 // Exercise API
 export const exerciseApi = {
   // Create a new exercise
-  async create(exercise: CreateExerciseRequest): Promise<{ exercise: Exercise; code: string }> {
-    return apiRequest('/exercises', {
-      method: 'POST',
-      body: JSON.stringify(exercise),
-    });
+  async create(exercise: CreateExerciseRequest): Promise<{ id: string; code: string }> {
+    if (isUsingSupabaseFunctions) {
+      return supabaseApiRequest('exercises', {
+        action: 'create',
+        ...exercise
+      });
+    } else {
+      return apiRequest('/exercises', {
+        method: 'POST',
+        body: JSON.stringify(exercise),
+      });
+    }
   },
 
   // Get exercise by ID or code
   async get(idOrCode: string): Promise<Exercise> {
-    return apiRequest(`/exercises/${idOrCode}`);
+    if (isUsingSupabaseFunctions) {
+      return supabaseApiRequest('exercises', {
+        action: 'get',
+        exerciseId: idOrCode
+      });
+    } else {
+      return apiRequest(`/exercises/${idOrCode}`);
+    }
   },
 
   // List all exercises (for admin/teacher)
   async list(): Promise<Exercise[]> {
-    return apiRequest('/exercises');
+    if (isUsingSupabaseFunctions) {
+      return supabaseApiRequest('exercises', {
+        action: 'list'
+      });
+    } else {
+      return apiRequest('/exercises');
+    }
   },
 
   // Update exercise

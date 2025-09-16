@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '@/hooks/use-toast';
+import { exerciseApi, lessonApi } from '@/lib/api';
 import { 
   ArrowLeft,
   Plus,
@@ -24,6 +26,7 @@ import {
 
 const Teacher = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [exerciseForm, setExerciseForm] = useState({
     title: '',
     focusHint: '',
@@ -52,16 +55,84 @@ const Teacher = () => {
     lessonCode: ''
   });
 
-  const handleCreateExercise = () => {
-    // Generate mock exercise code
-    const code = `EX-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
-    setGeneratedCodes(prev => ({ ...prev, exerciseCode: code }));
+  const handleCreateExercise = async () => {
+    try {
+      // Validate required fields
+      if (!exerciseForm.title || !exerciseForm.focusHint || !exerciseForm.case.role || !exerciseForm.case.background || !exerciseForm.case.goals) {
+        toast({
+          title: "Validation Error",
+          description: "Please fill in all required fields",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Create exercise via API
+      const result = await exerciseApi.create({
+        title: exerciseForm.title,
+        focusHint: exerciseForm.focusHint,
+        case: exerciseForm.case,
+        toggles: exerciseForm.toggles,
+        protocolStack: exerciseForm.protocolStack
+      });
+
+      // Update generated codes
+      setGeneratedCodes(prev => ({ ...prev, exerciseCode: result.code }));
+      
+      // Show success message
+      toast({
+        title: "Success",
+        description: `Exercise created successfully! Code: ${result.code}`
+      });
+      
+      console.log('Exercise created:', result);
+    } catch (error) {
+      console.error('Failed to create exercise:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create exercise. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
-  const handleCreateLesson = () => {
-    // Generate mock lesson code
-    const code = `LS-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
-    setGeneratedCodes(prev => ({ ...prev, lessonCode: code }));
+  const handleCreateLesson = async () => {
+    try {
+      // Validate required fields
+      if (!lessonForm.title || lessonForm.objectives.filter(obj => obj.trim()).length === 0) {
+        toast({
+          title: "Validation Error",
+          description: "Please provide a title and at least one learning objective",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Create lesson via API
+      const result = await lessonApi.create({
+        title: lessonForm.title,
+        objectives: lessonForm.objectives.filter(obj => obj.trim()),
+        exerciseOrder: lessonForm.exerciseOrder
+      });
+
+      // Update generated codes
+      setGeneratedCodes(prev => ({ ...prev, lessonCode: result.code }));
+      
+      // Show success message
+      toast({
+        title: "Success",
+        description: `Lesson created successfully! Code: ${result.code}`
+      });
+      
+      console.log('Lesson created:', result);
+    } catch (error) {
+      console.error('Failed to create lesson:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create lesson. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   return (
