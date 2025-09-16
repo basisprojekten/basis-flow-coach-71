@@ -61,7 +61,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     switch (action) {
       case 'create': {
-        const { title, focusHint, case: caseData, toggles, protocols = ['BASIS'] } = body;
+        const { title, focusHint, case: caseData, toggles, protocolStack } = body;
 
         if (!title || !focusHint || !caseData) {
           return jsonResponse({
@@ -71,17 +71,41 @@ Deno.serve(async (req: Request): Promise<Response> => {
         }
 
         const exerciseCode = generateExerciseCode();
+        const caseId = `case-${Math.random().toString(36).substr(2, 8)}`;
+
+        // Normalize protocols from protocolStack
+        const protocols = Array.isArray(protocolStack) && protocolStack.length > 0
+          ? protocolStack
+          : ["basis-v1"]; // sensible default
         
-        // Create the exercise record
+        // 1) Create the case row
+        const { error: caseError } = await supabase
+          .from('cases')
+          .insert({
+            id: caseId,
+            role: caseData.role,
+            background: caseData.background,
+            goals: caseData.goals,
+            created_at: new Date().toISOString(),
+          });
+
+        if (caseError) {
+          console.error('Error creating case for exercise:', caseError);
+          return jsonResponse({
+            error: "DATABASE_ERROR",
+            message: "Failed to create case for exercise",
+            details: caseError
+          }, 500);
+        }
+        
+        // 2) Create the exercise record linking the case
         const { data: exercise, error: exerciseError } = await supabase
           .from('exercises')
           .insert({
             id: exerciseCode,
             title,
             focus_hint: focusHint,
-            case_role: caseData.role,
-            case_background: caseData.background,
-            case_goals: caseData.goals,
+            case_id: caseId,
             toggles: toggles,
             protocols: protocols,
             created_at: new Date().toISOString(),
@@ -98,7 +122,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           }, 500);
         }
 
-        console.log('Exercise created successfully:', { id: exerciseCode, title });
+        console.log('Exercise created successfully:', { id: exerciseCode, title, caseId });
 
         return jsonResponse({
           id: exerciseCode,

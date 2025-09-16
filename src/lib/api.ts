@@ -187,21 +187,41 @@ export const exerciseApi = {
 // Lesson API
 export const lessonApi = {
   // Create a new lesson
-  async create(lesson: CreateLessonRequest): Promise<{ lesson: Lesson; code: string }> {
-    return apiRequest('/lessons', {
-      method: 'POST',
-      body: JSON.stringify(lesson),
-    });
+  async create(lesson: CreateLessonRequest): Promise<{ id: string; code: string }> {
+    if (isUsingSupabaseFunctions) {
+      return supabaseApiRequest('lessons', {
+        action: 'create',
+        ...lesson
+      });
+    } else {
+      return apiRequest('/lessons', {
+        method: 'POST',
+        body: JSON.stringify(lesson),
+      });
+    }
   },
 
   // Get lesson by ID or code
   async get(idOrCode: string): Promise<Lesson> {
-    return apiRequest(`/lessons/${idOrCode}`);
+    if (isUsingSupabaseFunctions) {
+      return supabaseApiRequest('lessons', {
+        action: 'get',
+        lessonId: idOrCode
+      });
+    } else {
+      return apiRequest(`/lessons/${idOrCode}`);
+    }
   },
 
   // List all lessons
   async list(): Promise<Lesson[]> {
-    return apiRequest('/lessons');
+    if (isUsingSupabaseFunctions) {
+      return supabaseApiRequest('lessons', {
+        action: 'list'
+      });
+    } else {
+      return apiRequest('/lessons');
+    }
   },
 
   // Update lesson
