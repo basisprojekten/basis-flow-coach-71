@@ -36,12 +36,12 @@ The platform implements three AI agents with **strict temporal separation**:
 - **React Router** for navigation
 - **TanStack Query** for state management
 
-**Backend** (To be implemented):
-- **Node.js 20+** with TypeScript
-- **Express** or **Fastify** (recommended: Express for simplicity)
-- **Prisma** with SQLite for data persistence
+**Backend:**
+- **Node.js 20+** with TypeScript  
+- **Express** server with REST API
 - **OpenAI Agents SDK** for AI integration
-- **WebSocket** support for real-time features
+- **In-memory** session management (SQLite/Prisma coming soon)
+- **Structured outputs** with JSON schema validation
 
 **Database:**
 - **SQLite** with Prisma ORM
@@ -190,35 +190,52 @@ Rubric fields must map to active protocols or response is rejected.
 - npm or yarn
 - OpenAI API key
 
-### Frontend Development
+### Installation & Setup
 
 ```bash
 # Install dependencies
 npm install
 
-# Start development server
+# Setup backend environment
+cp server/.env.example server/.env
+# Edit server/.env and add your OPENAI_API_KEY
+```
+
+### Development
+
+```bash
+# Start frontend only (http://localhost:5173)
 npm run dev
 
-# Build for production
-npm run build
+# Start backend only (http://localhost:3001)  
+npm run dev:server
 
-# Run tests
-npm run test
+# Start both frontend and backend
+npm run dev:full
 ```
 
-### Environment Setup
+### Testing the Integration
 
-Create `.env.local` for frontend:
-```
-VITE_API_URL=http://localhost:3001
-```
+1. **Access Student Portal**: Navigate to http://localhost:5173/student
+2. **Test with Demo Codes**: Use `EX-DEMO001` or `LS-DEMO001`
+3. **Start Session**: Enter code and begin conversation training
+4. **View Agent Feedback**: See Navigator (feedforward) and Analyst (iterative) responses
+5. **Try Transcript Analysis**: Use "Analyze Transcript" mode for holistic feedback
 
-Backend `.env` (when implemented):
+### Environment Configuration
+
+Backend `.env`:
 ```
 OPENAI_API_KEY=your_key_here
-DATABASE_URL="file:./dev.db"
-PORT=3001
 NODE_ENV=development
+PORT=3001
+LOG_LEVEL=info
+```
+
+Frontend (automatic):
+```
+VITE_API_URL=http://localhost:3001/api (development)
+VITE_API_URL=/api (production)
 ```
 
 ## Design System
@@ -295,21 +312,24 @@ npm run test:all
 - Semantic commit messages
 - 80%+ test coverage required
 
-## Future Enhancements
+### Future Enhancements
 
 ### Planned Features
-- **Voice Integration**: Real-time speech processing
-- **Advanced Analytics**: Learning progression tracking
+- **SQLite/Prisma Persistence**: Replace in-memory sessions
+- **WebSocket Integration**: Real-time communication
+- **Voice Integration**: Real-time speech processing with OpenAI Realtime API
+- **Advanced Analytics**: Learning progression tracking  
 - **Multi-language Support**: Internationalization
 - **Mobile App**: React Native implementation
 - **LTI Integration**: Learning management system compatibility
 
-### Technical Debt
-- Backend API implementation
-- WebSocket real-time communication
+### Technical Roadmap
+- Database persistence layer
+- Authentication & authorization
 - Advanced caching strategies
-- Performance optimization
+- Performance optimization  
 - Security hardening
+- Comprehensive test suite
 
 ## License
 

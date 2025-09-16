@@ -7,8 +7,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '@/hooks/use-toast';
 import AgentCard from '@/components/AgentCard';
 import { AgentResponseSet, ConversationMessage } from '@/types/basis';
+import { sessionApi, transcriptApi, BasisApiError } from '@/lib/api';
 import { 
   ArrowLeft,
   Send,
@@ -22,129 +24,206 @@ import {
 
 const Student = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [accessCode, setAccessCode] = useState('');
   const [sessionMode, setSessionMode] = useState<'exercise' | 'lesson' | 'transcript' | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [currentMessage, setCurrentMessage] = useState('');
   const [transcriptText, setTranscriptText] = useState('');
   
-  // Mock conversation history
-  const [conversation, setConversation] = useState<ConversationMessage[]>([
-    {
-      id: '1',
-      role: 'system',
-      content: 'Welcome to your BASIS training session. You will be practicing conversation techniques with a concerned parent role. The Navigator agent will guide you before each response.',
-      timestamp: new Date()
-    }
-  ]);
+  // Conversation history
+  const [conversation, setConversation] = useState<ConversationMessage[]>([]);
 
   // Agent responses state
-  const [agentResponses, setAgentResponses] = useState<AgentResponseSet>({
-    navigator: {
-      type: 'feedforward',
-      next_focus: 'Establish rapport and demonstrate active listening',
-      micro_objective: 'Ask open-ended questions to understand the parent\'s concerns',
-      guardrails: ['Maintain professional boundaries', 'Show empathy without making promises'],
-      user_prompt: 'Focus on building trust through careful listening and thoughtful responses.'
-    }
-  });
+  const [agentResponses, setAgentResponses] = useState<AgentResponseSet>({});
 
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleStartSession = () => {
-    if (accessCode.startsWith('EX-')) {
-      setSessionMode('exercise');
-    } else if (accessCode.startsWith('LS-')) {
-      setSessionMode('lesson');
-    } else {
-      // Mock validation - in real app would call API
-      alert('Invalid access code. Use format EX-XXXXXX for exercises or LS-XXXXXX for lessons.');
+  const handleStartSession = async () => {
+    if (!accessCode.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter an access code",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      let sessionRequest;
+      if (accessCode.startsWith('EX-')) {
+        sessionRequest = { exerciseCode: accessCode };
+        setSessionMode('exercise');
+      } else if (accessCode.startsWith('LS-')) {
+        sessionRequest = { lessonCode: accessCode };
+        setSessionMode('lesson');
+      } else {
+        toast({
+          title: "Invalid Access Code",
+          description: "Use format EX-XXXXXX for exercises or LS-XXXXXX for lessons",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      const response = await sessionApi.start(sessionRequest);
+      setSessionId(response.session.id);
+      
+      // Initialize conversation with system message
+      const systemMessage: ConversationMessage = {
+        id: 'system_welcome',
+        role: 'system',
+        content: 'Welcome to your BASIS training session. You will be practicing conversation techniques with a concerned parent role.',
+        timestamp: new Date()
+      };
+      setConversation([systemMessage]);
+      
+      // Set initial guidance if provided
+      if (response.initialGuidance) {
+        setAgentResponses(response.initialGuidance);
+      }
+
+      toast({
+        title: "Session Started",
+        description: `Training session ${response.session.id} has begun`,
+      });
+
+    } catch (error) {
+      if (error instanceof BasisApiError) {
+        toast({
+          title: "Session Error",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Connection Error",
+          description: "Unable to connect to training server",
+          variant: "destructive",
+        });
+      }
+      setSessionMode(null);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleSendMessage = async () => {
-    if (!currentMessage.trim()) return;
+    if (!currentMessage.trim() || !sessionId) return;
 
     setIsLoading(true);
 
     // Add user message to conversation
-    const newMessage: ConversationMessage = {
+    const userMessage: ConversationMessage = {
       id: `msg_${Date.now()}`,
       role: 'user',
       content: currentMessage,
       timestamp: new Date()
     };
 
-    setConversation(prev => [...prev, newMessage]);
-
-    // Mock AI response
-    const aiResponse: ConversationMessage = {
-      id: `msg_${Date.now() + 1}`,
-      role: 'assistant',
-      content: 'I understand your concerns about your child\'s progress. Can you tell me more about the specific challenges you\'ve noticed at home?',
-      timestamp: new Date()
-    };
-
-    setTimeout(() => {
-      setConversation(prev => [...prev, aiResponse]);
-      
-      // Mock analyst feedback
-      setAgentResponses(prev => ({
-        ...prev,
-        analyst: {
-          type: 'iterative_feedback',
-          segment_id: `seg_${Date.now()}`,
-          rubric: [
-            { field: 'Active Listening', score: 3 },
-            { field: 'Empathy', score: 2 },
-            { field: 'Professionalism', score: 3 }
-          ],
-          evidence_quotes: [currentMessage],
-          past_only_feedback: 'Your response demonstrated good professional boundaries. The question was appropriately open-ended, though you could have acknowledged the parent\'s emotional state more directly.'
-        }
-      }));
-
-      setIsLoading(false);
-    }, 1500);
-
+    setConversation(prev => [...prev, userMessage]);
     setCurrentMessage('');
+
+    try {
+      const response = await sessionApi.sendInput(sessionId, {
+        content: currentMessage,
+        timestamp: new Date()
+      });
+
+      // Add AI response to conversation if provided
+      if (response.aiResponse) {
+        const aiMessage: ConversationMessage = {
+          id: `ai_${Date.now()}`,
+          role: 'assistant',
+          content: response.aiResponse,
+          timestamp: new Date()
+        };
+        setConversation(prev => [...prev, aiMessage]);
+      }
+
+      // Update agent feedback
+      setAgentResponses(response.agentFeedback);
+
+    } catch (error) {
+      if (error instanceof BasisApiError) {
+        if (error.errorCode === 'ANALYSIS_QUALITY_ERROR') {
+          toast({
+            title: "Feedback Generation Issue",
+            description: "Feedback could not be generated due to protocol deviation. Please try rephrasing your response.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Session Error", 
+            description: error.message,
+            variant: "destructive",
+          });
+        }
+      } else {
+        toast({
+          title: "Connection Error",
+          description: "Unable to send message. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleTranscriptAnalysis = () => {
+  const handleTranscriptAnalysis = async () => {
     if (!transcriptText.trim()) return;
 
     setIsLoading(true);
 
-    // Mock reviewer response
-    setTimeout(() => {
-      setAgentResponses(prev => ({
-        ...prev,
-        reviewer: {
-          type: 'holistic_feedback',
-          rubric_summary: [
-            { field: 'Active Listening', score: 3 },
-            { field: 'Empathy', score: 2 },
-            { field: 'Professionalism', score: 4 },
-            { field: 'Problem Resolution', score: 3 }
-          ],
-          strengths: [
-            'Maintained professional boundaries throughout',
-            'Asked appropriate follow-up questions',
-            'Demonstrated patience with emotional responses'
-          ],
-          growth_areas: [
-            'Could improve emotional validation techniques',
-            'Opportunity to summarize understanding more frequently'
-          ],
-          exemplar_quotes: [
-            'I understand this must be very concerning for you as a parent.',
-            'Can you help me understand what specific behaviors you\'ve observed?'
-          ],
-          summary: 'Overall strong performance with good professional boundaries and appropriate questioning techniques. Focus on enhancing emotional validation skills in future sessions.'
+    try {
+      const response = await transcriptApi.review({
+        transcript: transcriptText,
+        protocolIds: ['basis-v1'], // Default to BASIS protocol
+        exerciseConfig: {
+          focusHint: 'General conversation analysis',
+          caseRole: 'Concerned Parent',
+          caseBackground: 'Parent discussing child-related concerns'
         }
-      }));
+      });
 
+      setAgentResponses({
+        reviewer: response.analysis.reviewer
+      });
+
+      toast({
+        title: "Analysis Complete",
+        description: `Analyzed ${response.metadata.wordCount} words (≈${response.metadata.estimatedDuration} min conversation)`,
+      });
+
+    } catch (error) {
+      if (error instanceof BasisApiError) {
+        if (error.errorCode === 'TRANSCRIPT_TOO_LARGE') {
+          toast({
+            title: "Transcript Too Large",
+            description: "Please use a shorter transcript (max 50,000 characters)",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Analysis Error",
+            description: error.message,
+            variant: "destructive",
+          });
+        }
+      } else {
+        toast({
+          title: "Connection Error", 
+          description: "Unable to analyze transcript. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } finally {
       setIsLoading(false);
-    }, 2000);
+    }
   };
 
   if (!sessionMode) {
@@ -199,11 +278,15 @@ const Student = () => {
                   <Button 
                     size="lg" 
                     onClick={handleStartSession}
-                    disabled={!accessCode}
+                    disabled={!accessCode || isLoading}
                     className="w-full"
                   >
-                    <Play className="h-4 w-4 mr-2" />
-                    Start Session
+                    {isLoading ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Play className="h-4 w-4 mr-2" />
+                    )}
+                    {isLoading ? 'Starting...' : 'Start Session'}
                   </Button>
                   <Button 
                     variant="outline" 

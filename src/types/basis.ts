@@ -147,6 +147,11 @@ export interface SessionInputRequest {
 export interface TranscriptReviewRequest {
   transcript: string;
   protocolIds?: string[];
+  exerciseConfig?: {
+    focusHint: string;
+    caseRole: string;
+    caseBackground: string;
+  };
 }
 
 // Error Types
