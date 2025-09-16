@@ -1,12 +1,14 @@
 // Supabase Edge Function: session
-// Minimal implementation to start a session with CORS enabled
+// Complete session management with all endpoints migrated from Express
 
 // deno-lint-ignore-file no-explicit-any
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
 };
 
 function jsonResponse(data: any, status = 200) {
@@ -16,6 +18,343 @@ function jsonResponse(data: any, status = 200) {
   });
 }
 
+// Initialize Supabase client
+const supabase = createClient(
+  Deno.env.get('SUPABASE_URL') ?? '',
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+);
+
+// Session interfaces
+interface ConversationMessage {
+  id: string;
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  metadata?: Record<string, any>;
+}
+
+interface ExerciseConfig {
+  id: string;
+  title: string;
+  caseId: string;
+  toggles: {
+    feedforward: boolean;
+    iterative: boolean;
+    mode: 'text' | 'voice' | 'transcript';
+    skipRoleplayForGlobalFeedback?: boolean;
+  };
+  focusHint: string;
+  protocols: string[];
+}
+
+interface SessionState {
+  id: string;
+  exerciseId?: string;
+  lessonId?: string;
+  mode: 'exercise' | 'lesson' | 'transcript';
+  currentExerciseIndex: number;
+  conversationHistory: ConversationMessage[];
+  protocols: string[];
+  config: ExerciseConfig;
+  metadata: {
+    startedAt: Date;
+    lastActivityAt: Date;
+    studentId?: string;
+    exerciseCode?: string;
+    lessonCode?: string;
+  };
+}
+
+// Helper to generate random ID
+function generateId(length = 12): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+// Session management functions
+async function createSession(config: {
+  mode: 'exercise' | 'lesson';
+  exerciseCode?: string;
+  lessonCode?: string;
+}): Promise<SessionState> {
+  const sessionId = generateId(12);
+  
+  // Get exercise configuration from database
+  let exerciseConfig: ExerciseConfig;
+  
+  if (config.exerciseCode) {
+    const { data: exercise, error } = await supabase
+      .from('exercises')
+      .select('*')
+      .eq('id', config.exerciseCode)
+      .single();
+      
+    if (error || !exercise) {
+      console.error('Exercise not found', { exerciseCode: config.exerciseCode, error });
+      throw new Error(`Exercise not found: ${config.exerciseCode}`);
+    }
+    
+    exerciseConfig = {
+      id: exercise.id,
+      title: exercise.title,
+      caseId: exercise.case_id,
+      toggles: exercise.toggles as any,
+      focusHint: exercise.focus_hint || '',
+      protocols: exercise.protocols as string[]
+    };
+  } else {
+    // Default exercise configuration
+    exerciseConfig = {
+      id: 'demo-001',
+      title: 'Confidentiality Discussion Training',
+      caseId: 'concerned-parent-case',
+      toggles: {
+        feedforward: true,
+        iterative: true,
+        mode: 'text',
+        skipRoleplayForGlobalFeedback: false
+      },
+      focusHint: 'Practice maintaining professional boundaries while showing empathy',
+      protocols: ['basis-v1']
+    };
+  }
+
+  const initialMessage: ConversationMessage = {
+    id: generateId(8),
+    role: 'system',
+    content: `Welcome to your BASIS training session. You will be practicing conversation techniques with a concerned parent role. The scenario: A parent is worried about their child's academic progress and wants to discuss intervention strategies.`,
+    timestamp: new Date(),
+    metadata: { type: 'session_start' }
+  };
+
+  const sessionState = {
+    conversationHistory: [initialMessage],
+    currentExerciseIndex: 0,
+    protocols: exerciseConfig.protocols,
+    config: exerciseConfig
+  };
+
+  // Insert session into database
+  const { data: dbSession, error } = await supabase
+    .from('sessions')
+    .insert({
+      id: sessionId,
+      mode: config.mode,
+      exercise_id: config.exerciseCode,
+      lesson_id: config.lessonCode,
+      state: sessionState,
+      started_at: new Date().toISOString(),
+      last_activity_at: new Date().toISOString()
+    })
+    .select()
+    .single();
+
+  if (error || !dbSession) {
+    console.error('Failed to create session in database', { error });
+    throw new Error('Failed to create session');
+  }
+
+  const session: SessionState = {
+    id: sessionId,
+    exerciseId: config.exerciseCode,
+    lessonId: config.lessonCode,
+    mode: config.mode,
+    currentExerciseIndex: sessionState.currentExerciseIndex,
+    conversationHistory: sessionState.conversationHistory,
+    protocols: sessionState.protocols,
+    config: exerciseConfig,
+    metadata: {
+      startedAt: new Date(dbSession.started_at),
+      lastActivityAt: new Date(dbSession.last_activity_at),
+      exerciseCode: config.exerciseCode,
+      lessonCode: config.lessonCode
+    }
+  };
+  
+  console.log('Session created', {
+    sessionId,
+    mode: config.mode,
+    exerciseCode: config.exerciseCode,
+    lessonCode: config.lessonCode
+  });
+
+  return session;
+}
+
+async function getSession(sessionId: string): Promise<SessionState | null> {
+  const { data: dbSession, error } = await supabase
+    .from('sessions')
+    .select('*')
+    .eq('id', sessionId)
+    .single();
+
+  if (error || !dbSession) {
+    return null;
+  }
+
+  // Check if session has expired (2 hours)
+  const SESSION_TIMEOUT = 2 * 60 * 60 * 1000;
+  const now = new Date();
+  const timeSinceLastActivity = now.getTime() - new Date(dbSession.last_activity_at).getTime();
+  
+  if (timeSinceLastActivity > SESSION_TIMEOUT) {
+    await endSession(sessionId);
+    console.log('Session expired and removed', { sessionId });
+    return null;
+  }
+
+  const state = dbSession.state as any;
+  
+  const session: SessionState = {
+    id: dbSession.id,
+    exerciseId: dbSession.exercise_id,
+    lessonId: dbSession.lesson_id,
+    mode: dbSession.mode as 'exercise' | 'lesson' | 'transcript',
+    currentExerciseIndex: state.currentExerciseIndex || 0,
+    conversationHistory: state.conversationHistory || [],
+    protocols: state.protocols || ['basis-v1'],
+    config: state.config || {
+      id: 'demo-001',
+      title: 'Default Exercise',
+      caseId: 'concerned-parent-case',
+      toggles: { feedforward: true, iterative: true, mode: 'text' },
+      focusHint: '',
+      protocols: ['basis-v1']
+    },
+    metadata: {
+      startedAt: new Date(dbSession.started_at),
+      lastActivityAt: new Date(dbSession.last_activity_at),
+      exerciseCode: dbSession.exercise_id,
+      lessonCode: dbSession.lesson_id
+    }
+  };
+
+  return session;
+}
+
+async function addMessage(sessionId: string, message: Omit<ConversationMessage, 'id' | 'timestamp'>): Promise<ConversationMessage | null> {
+  const session = await getSession(sessionId);
+  
+  if (!session) {
+    return null;
+  }
+
+  const newMessage: ConversationMessage = {
+    id: generateId(8),
+    timestamp: new Date(),
+    ...message
+  };
+
+  session.conversationHistory.push(newMessage);
+  session.metadata.lastActivityAt = new Date();
+
+  // Update session state in database
+  const updatedState = {
+    conversationHistory: session.conversationHistory,
+    currentExerciseIndex: session.currentExerciseIndex,
+    protocols: session.protocols,
+    config: session.config
+  };
+
+  const { error } = await supabase
+    .from('sessions')
+    .update({
+      state: updatedState,
+      last_activity_at: new Date().toISOString()
+    })
+    .eq('id', sessionId);
+
+  if (error) {
+    console.error('Failed to update session state', { sessionId, error });
+    return null;
+  }
+
+  console.log('Message added to session', {
+    sessionId,
+    messageId: newMessage.id,
+    role: newMessage.role,
+    contentLength: newMessage.content.length
+  });
+
+  return newMessage;
+}
+
+async function endSession(sessionId: string): Promise<boolean> {
+  const session = await getSession(sessionId);
+  
+  if (!session) {
+    return false;
+  }
+
+  const { error } = await supabase
+    .from('sessions')
+    .delete()
+    .eq('id', sessionId);
+
+  if (error) {
+    console.error('Failed to delete session', { sessionId, error });
+    return false;
+  }
+  
+  console.log('Session ended', {
+    sessionId,
+    duration: new Date().getTime() - session.metadata.startedAt.getTime(),
+    messageCount: session.conversationHistory.length
+  });
+
+  return true;
+}
+
+// Mock AI response generation
+function generateAIRoleplayResponse(userInput: string): string {
+  const responses = [
+    "I appreciate you taking the time to listen to my concerns. Can you help me understand what resources are available to support my child?",
+    "That's reassuring to hear. I'm wondering what I can do at home to help reinforce what they're learning in school?",
+    "I'm still worried about the situation. Could you walk me through what the next steps would look like?",
+    "Thank you for explaining that. I want to make sure I'm being supportive in the right way. What should I watch for?"
+  ];
+
+  // Simple pattern matching for demo
+  if (userInput.toLowerCase().includes('understand')) {
+    return responses[0];
+  } else if (userInput.toLowerCase().includes('help') || userInput.toLowerCase().includes('support')) {
+    return responses[1];
+  } else if (userInput.toLowerCase().includes('concern') || userInput.toLowerCase().includes('worry')) {
+    return responses[2];
+  } else {
+    return responses[3];
+  }
+}
+
+// Mock agent responses for demo
+function generateMockAgentFeedback(content: string) {
+  return {
+    analyst: {
+      rubric: {
+        empathy: Math.floor(Math.random() * 3) + 3, // 3-5
+        clarity: Math.floor(Math.random() * 3) + 3,
+        boundaries: Math.floor(Math.random() * 3) + 3
+      },
+      feedback: `Good use of ${content.includes('understand') ? 'clarifying language' : 'supportive tone'}. Consider expanding on the specific resources available.`,
+      suggestions: ["Ask follow-up questions", "Provide specific examples"]
+    },
+    navigator: {
+      guidance: `Continue to ${content.includes('worry') ? 'acknowledge their concerns' : 'build on this positive interaction'}. The parent seems engaged.`,
+      nextSteps: ["Listen actively", "Offer concrete next steps"]
+    }
+  };
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -23,24 +362,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   const url = new URL(req.url);
+  const path = url.pathname;
 
-  // Only implement POST /session for now
-  if (req.method === "POST") {
-    try {
-      const path = url.pathname;
-      // Ensure base create endpoint (no id in path)
-      const isCreate = /\/functions\/v1\/session\/?$/.test(path);
-
-      if (!isCreate) {
-        // Not implemented: other session endpoints
-        return jsonResponse({
-          error: "NOT_IMPLEMENTED",
-          message: "This session endpoint is not yet implemented in Edge Functions.",
-        }, 501);
-      }
-
+  try {
+    // POST /session - Create new session
+    if (req.method === "POST" && /\/functions\/v1\/session\/?$/.test(path)) {
       const body = await req.json().catch(() => ({} as any));
-      const { lessonCode, exerciseCode } = body ?? {};
+      const { lessonCode, exerciseCode, mode = 'exercise' } = body ?? {};
 
       if (!lessonCode && !exerciseCode) {
         return jsonResponse({
@@ -49,38 +377,158 @@ Deno.serve(async (req: Request): Promise<Response> => {
         }, 400);
       }
 
-      const mode = lessonCode ? "lesson" : "exercise";
-      const id = crypto.randomUUID();
+      // Create session
+      const session = await createSession({
+        mode: lessonCode ? 'lesson' : 'exercise',
+        exerciseCode,
+        lessonCode
+      });
 
-      const response = {
-        session: {
-          id,
-          mode,
-          // Minimal defaults; align with frontend expectations
-          config: {
-            toggles: {
-              iterative: true,
-              feedforward: true,
-            },
-            focusHint: mode === "lesson" ? "Lesson practice" : "Exercise practice",
-          },
-          protocols: ["basis-v1"],
-          startedAt: new Date().toISOString(),
-        },
-        initialGuidance: null,
-      };
+      // Generate initial Navigator guidance if feedforward is enabled
+      let initialGuidance = null;
+      
+      if (session.config.toggles.feedforward) {
+        // Mock initial guidance for demo
+        initialGuidance = {
+          navigator: {
+            guidance: "Welcome! You'll be practicing with a concerned parent scenario. Focus on building rapport while maintaining professional boundaries.",
+            suggestions: ["Start with active listening", "Ask open-ended questions", "Show empathy"]
+          }
+        };
+      }
 
-      return jsonResponse(response, 200);
-    } catch (e: any) {
       return jsonResponse({
-        error: "SESSION_CREATION_FAILED",
-        message: e?.message ?? "Failed to create session",
-      }, 500);
+        session: {
+          id: session.id,
+          mode: session.mode,
+          config: session.config,
+          protocols: session.protocols,
+          startedAt: session.metadata.startedAt
+        },
+        initialGuidance
+      });
     }
-  }
 
-  return jsonResponse({
-    error: "METHOD_NOT_ALLOWED",
-    message: "Only POST is allowed",
-  }, 405);
+    // POST /session/:id/input - Send user input
+    if (req.method === "POST" && /\/functions\/v1\/session\/[^\/]+\/input\/?$/.test(path)) {
+      const sessionId = path.split('/')[4]; // Extract session ID from path
+      const body = await req.json().catch(() => ({} as any));
+      const { content, timestamp } = body ?? {};
+
+      if (!content || typeof content !== 'string' || content.trim().length === 0) {
+        return jsonResponse({
+          error: "INVALID_INPUT",
+          message: "Content is required and must be a non-empty string",
+        }, 400);
+      }
+
+      // Get session
+      const session = await getSession(sessionId);
+      if (!session) {
+        return jsonResponse({
+          error: "SESSION_NOT_FOUND",
+          message: "Training session not found or expired",
+        }, 404);
+      }
+
+      // Add user message to session
+      const userMessage = await addMessage(sessionId, {
+        role: 'user',
+        content: content.trim(),
+        metadata: { inputTimestamp: timestamp }
+      });
+
+      if (!userMessage) {
+        return jsonResponse({
+          error: "MESSAGE_STORAGE_FAILED",
+          message: "Failed to store user message",
+        }, 500);
+      }
+
+      // Generate AI roleplay response
+      const aiResponse = generateAIRoleplayResponse(content);
+      
+      // Add AI response to session
+      if (aiResponse) {
+        await addMessage(sessionId, {
+          role: 'assistant',
+          content: aiResponse,
+          metadata: { generated: true }
+        });
+      }
+
+      // Generate mock agent feedback
+      const agentFeedback = generateMockAgentFeedback(content);
+
+      // Get updated session state
+      const updatedSession = await getSession(sessionId);
+
+      return jsonResponse({
+        session: {
+          id: updatedSession!.id,
+          messageCount: updatedSession!.conversationHistory.length,
+          lastActivity: updatedSession!.metadata.lastActivityAt
+        },
+        aiResponse,
+        agentFeedback
+      });
+    }
+
+    // GET /session/:id - Get session state
+    if (req.method === "GET" && /\/functions\/v1\/session\/[^\/]+\/?$/.test(path)) {
+      const sessionId = path.split('/')[4]; // Extract session ID from path
+      
+      const session = await getSession(sessionId);
+      if (!session) {
+        return jsonResponse({
+          error: "SESSION_NOT_FOUND",
+          message: "Session not found or expired",
+        }, 404);
+      }
+
+      return jsonResponse({
+        session: {
+          id: session.id,
+          mode: session.mode,
+          config: session.config,
+          protocols: session.protocols,
+          messageCount: session.conversationHistory.length,
+          startedAt: session.metadata.startedAt,
+          lastActivity: session.metadata.lastActivityAt
+        }
+      });
+    }
+
+    // DELETE /session/:id - End session
+    if (req.method === "DELETE" && /\/functions\/v1\/session\/[^\/]+\/?$/.test(path)) {
+      const sessionId = path.split('/')[4]; // Extract session ID from path
+      
+      const ended = await endSession(sessionId);
+      
+      if (!ended) {
+        return jsonResponse({
+          error: "SESSION_NOT_FOUND",
+          message: "Session not found",
+        }, 404);
+      }
+
+      return jsonResponse({
+        message: "Session ended successfully",
+        sessionId
+      });
+    }
+
+    // Unsupported endpoint
+    return jsonResponse({
+      error: "ENDPOINT_NOT_FOUND",
+      message: "Session endpoint not found",
+    }, 404);
+
+  } catch (error: any) {
+    console.error('Session endpoint error:', error);
+    return jsonResponse({
+      error: "INTERNAL_ERROR",
+      message: error?.message ?? "Internal server error",
+    }, 500);
+  }
 });
