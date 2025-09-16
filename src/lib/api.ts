@@ -30,6 +30,32 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+// Check if we're using Supabase Edge Functions
+const isUsingSupabaseFunctions = API_BASE_URL.includes('supabase.co/functions');
+
+// Helper to build correct endpoint URLs
+function buildEndpointUrl(endpoint: string): string {
+  if (isUsingSupabaseFunctions) {
+    // For Supabase Edge Functions, remove leading slash and map endpoints
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
+    
+    // Map API endpoints to their corresponding Edge Functions
+    if (cleanEndpoint.startsWith('session')) {
+      return `${API_BASE_URL}/session${cleanEndpoint.replace('session', '')}`;
+    } else if (cleanEndpoint.startsWith('health')) {
+      return `${API_BASE_URL}/health`;
+    } else if (cleanEndpoint.startsWith('transcript')) {
+      return `${API_BASE_URL}/transcript${cleanEndpoint.replace('transcript', '')}`;
+    }
+    
+    // Default: assume the endpoint matches the function name
+    return `${API_BASE_URL}/${cleanEndpoint}`;
+  } else {
+    // For Express/local development, use the endpoint as-is
+    return `${API_BASE_URL}${endpoint}`;
+  }
+}
+
 // Error handling utility
 class BasisApiError extends Error {
   constructor(
@@ -48,7 +74,7 @@ async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
+  const url = buildEndpointUrl(endpoint);
   
   const config: RequestInit = {
     headers: {
