@@ -1,5 +1,5 @@
 // Supabase Edge Function: session
-// Complete session management with all endpoints migrated from Express
+// Complete session management with action-based routing for Supabase Edge Functions
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -8,7 +8,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 function jsonResponse(data: any, status = 200) {
@@ -361,174 +361,198 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  const url = new URL(req.url);
-  const path = url.pathname;
-
   try {
-    // POST /session - Create new session
-    if (req.method === "POST" && /\/functions\/v1\/session\/?$/.test(path)) {
-      const body = await req.json().catch(() => ({} as any));
-      const { lessonCode, exerciseCode, mode = 'exercise' } = body ?? {};
-
-      if (!lessonCode && !exerciseCode) {
-        return jsonResponse({
-          error: "MISSING_CODE",
-          message: "Either lessonCode or exerciseCode is required",
-        }, 400);
-      }
-
-      // Create session
-      const session = await createSession({
-        mode: lessonCode ? 'lesson' : 'exercise',
-        exerciseCode,
-        lessonCode
-      });
-
-      // Generate initial Navigator guidance if feedforward is enabled
-      let initialGuidance = null;
-      
-      if (session.config.toggles.feedforward) {
-        // Mock initial guidance for demo
-        initialGuidance = {
-          navigator: {
-            guidance: "Welcome! You'll be practicing with a concerned parent scenario. Focus on building rapport while maintaining professional boundaries.",
-            suggestions: ["Start with active listening", "Ask open-ended questions", "Show empathy"]
-          }
-        };
-      }
-
+    // All requests should be POST with action in body
+    if (req.method !== "POST") {
       return jsonResponse({
-        session: {
-          id: session.id,
-          mode: session.mode,
-          config: session.config,
-          protocols: session.protocols,
-          startedAt: session.metadata.startedAt
-        },
-        initialGuidance
-      });
+        error: "METHOD_NOT_ALLOWED",
+        message: "Only POST method is supported. Use action field in request body.",
+      }, 405);
     }
 
-    // POST /session/:id/input - Send user input
-    if (req.method === "POST" && /\/functions\/v1\/session\/[^\/]+\/input\/?$/.test(path)) {
-      const sessionId = path.split('/')[4]; // Extract session ID from path
-      const body = await req.json().catch(() => ({} as any));
-      const { content, timestamp } = body ?? {};
+    const body = await req.json().catch(() => ({} as any));
+    const { action } = body ?? {};
 
-      if (!content || typeof content !== 'string' || content.trim().length === 0) {
+    if (!action) {
+      return jsonResponse({
+        error: "MISSING_ACTION",
+        message: "action field is required in request body",
+      }, 400);
+    }
+
+    console.log('Session function called', { action, hasBody: !!body });
+
+    // Handle different actions
+    switch (action) {
+      case "start": {
+        const { lessonCode, exerciseCode, mode = 'exercise' } = body;
+
+        if (!lessonCode && !exerciseCode) {
+          return jsonResponse({
+            error: "MISSING_CODE",
+            message: "Either lessonCode or exerciseCode is required",
+          }, 400);
+        }
+
+        // Create session
+        const session = await createSession({
+          mode: lessonCode ? 'lesson' : 'exercise',
+          exerciseCode,
+          lessonCode
+        });
+
+        // Generate initial Navigator guidance if feedforward is enabled
+        let initialGuidance = null;
+        
+        if (session.config.toggles.feedforward) {
+          // Mock initial guidance for demo
+          initialGuidance = {
+            navigator: {
+              guidance: "Welcome! You'll be practicing with a concerned parent scenario. Focus on building rapport while maintaining professional boundaries.",
+              suggestions: ["Start with active listening", "Ask open-ended questions", "Show empathy"]
+            }
+          };
+        }
+
         return jsonResponse({
-          error: "INVALID_INPUT",
-          message: "Content is required and must be a non-empty string",
-        }, 400);
-      }
-
-      // Get session
-      const session = await getSession(sessionId);
-      if (!session) {
-        return jsonResponse({
-          error: "SESSION_NOT_FOUND",
-          message: "Training session not found or expired",
-        }, 404);
-      }
-
-      // Add user message to session
-      const userMessage = await addMessage(sessionId, {
-        role: 'user',
-        content: content.trim(),
-        metadata: { inputTimestamp: timestamp }
-      });
-
-      if (!userMessage) {
-        return jsonResponse({
-          error: "MESSAGE_STORAGE_FAILED",
-          message: "Failed to store user message",
-        }, 500);
-      }
-
-      // Generate AI roleplay response
-      const aiResponse = generateAIRoleplayResponse(content);
-      
-      // Add AI response to session
-      if (aiResponse) {
-        await addMessage(sessionId, {
-          role: 'assistant',
-          content: aiResponse,
-          metadata: { generated: true }
+          session: {
+            id: session.id,
+            mode: session.mode,
+            config: session.config,
+            protocols: session.protocols,
+            startedAt: session.metadata.startedAt
+          },
+          initialGuidance
         });
       }
 
-      // Generate mock agent feedback
-      const agentFeedback = generateMockAgentFeedback(content);
+      case "sendInput": {
+        const { sessionId, content, timestamp } = body;
 
-      // Get updated session state
-      const updatedSession = await getSession(sessionId);
-
-      return jsonResponse({
-        session: {
-          id: updatedSession!.id,
-          messageCount: updatedSession!.conversationHistory.length,
-          lastActivity: updatedSession!.metadata.lastActivityAt
-        },
-        aiResponse,
-        agentFeedback
-      });
-    }
-
-    // GET /session/:id - Get session state
-    if (req.method === "GET" && /\/functions\/v1\/session\/[^\/]+\/?$/.test(path)) {
-      const sessionId = path.split('/')[4]; // Extract session ID from path
-      
-      const session = await getSession(sessionId);
-      if (!session) {
-        return jsonResponse({
-          error: "SESSION_NOT_FOUND",
-          message: "Session not found or expired",
-        }, 404);
-      }
-
-      return jsonResponse({
-        session: {
-          id: session.id,
-          mode: session.mode,
-          config: session.config,
-          protocols: session.protocols,
-          messageCount: session.conversationHistory.length,
-          startedAt: session.metadata.startedAt,
-          lastActivity: session.metadata.lastActivityAt
+        if (!sessionId || !content || typeof content !== 'string' || content.trim().length === 0) {
+          return jsonResponse({
+            error: "INVALID_INPUT",
+            message: "sessionId and content are required, content must be a non-empty string",
+          }, 400);
         }
-      });
-    }
 
-    // DELETE /session/:id - End session
-    if (req.method === "DELETE" && /\/functions\/v1\/session\/[^\/]+\/?$/.test(path)) {
-      const sessionId = path.split('/')[4]; // Extract session ID from path
-      
-      const ended = await endSession(sessionId);
-      
-      if (!ended) {
+        // Get session
+        const session = await getSession(sessionId);
+        if (!session) {
+          return jsonResponse({
+            error: "SESSION_NOT_FOUND",
+            message: "Training session not found or expired",
+          }, 404);
+        }
+
+        // Add user message to session
+        const userMessage = await addMessage(sessionId, {
+          role: 'user',
+          content: content.trim(),
+          metadata: { inputTimestamp: timestamp }
+        });
+
+        if (!userMessage) {
+          return jsonResponse({
+            error: "MESSAGE_STORAGE_FAILED",
+            message: "Failed to store user message",
+          }, 500);
+        }
+
+        // Generate AI roleplay response
+        const aiResponse = generateAIRoleplayResponse(content);
+        
+        // Add AI response to session
+        if (aiResponse) {
+          await addMessage(sessionId, {
+            role: 'assistant',
+            content: aiResponse,
+            metadata: { generated: true }
+          });
+        }
+
+        // Generate mock agent feedback
+        const agentFeedback = generateMockAgentFeedback(content);
+
+        // Get updated session state
+        const updatedSession = await getSession(sessionId);
+
         return jsonResponse({
-          error: "SESSION_NOT_FOUND",
-          message: "Session not found",
-        }, 404);
+          session: {
+            id: updatedSession!.id,
+            messageCount: updatedSession!.conversationHistory.length,
+            lastActivity: updatedSession!.metadata.lastActivityAt
+          },
+          aiResponse,
+          agentFeedback
+        });
       }
 
-      return jsonResponse({
-        message: "Session ended successfully",
-        sessionId
-      });
-    }
+      case "get": {
+        const { sessionId } = body;
 
-    // Unsupported endpoint
-    return jsonResponse({
-      error: "ENDPOINT_NOT_FOUND",
-      message: "Session endpoint not found",
-    }, 404);
+        if (!sessionId) {
+          return jsonResponse({
+            error: "MISSING_SESSION_ID",
+            message: "sessionId is required",
+          }, 400);
+        }
+        
+        const session = await getSession(sessionId);
+        if (!session) {
+          return jsonResponse({
+            error: "SESSION_NOT_FOUND",
+            message: "Session not found or expired",
+          }, 404);
+        }
+
+        return jsonResponse({
+          session: {
+            id: session.id,
+            mode: session.mode,
+            config: session.config,
+            protocols: session.protocols,
+            messageCount: session.conversationHistory.length,
+            startedAt: session.metadata.startedAt,
+            lastActivity: session.metadata.lastActivityAt
+          }
+        });
+      }
+
+      case "end": {
+        const { sessionId } = body;
+
+        if (!sessionId) {
+          return jsonResponse({
+            error: "MISSING_SESSION_ID",
+            message: "sessionId is required",
+          }, 400);
+        }
+        
+        const success = await endSession(sessionId);
+        if (!success) {
+          return jsonResponse({
+            error: "SESSION_NOT_FOUND",
+            message: "Session not found or already ended",
+          }, 404);
+        }
+
+        return jsonResponse({ success: true });
+      }
+
+      default:
+        return jsonResponse({
+          error: "INVALID_ACTION",
+          message: `Unknown action: ${action}. Supported actions: start, sendInput, get, end`,
+        }, 400);
+    }
 
   } catch (error: any) {
-    console.error('Session endpoint error:', error);
+    console.error('Session function error:', error);
+    
     return jsonResponse({
       error: "INTERNAL_ERROR",
-      message: error?.message ?? "Internal server error",
+      message: error?.message ?? "An unexpected error occurred",
     }, 500);
   }
 });

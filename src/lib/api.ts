@@ -33,23 +33,24 @@ const API_BASE_URL = getApiBaseUrl();
 // Check if we're using Supabase Edge Functions
 const isUsingSupabaseFunctions = API_BASE_URL.includes('supabase.co/functions');
 
-// Helper to build correct endpoint URLs
+// Helper to build correct endpoint URLs for action-based routing
 function buildEndpointUrl(endpoint: string): string {
   if (isUsingSupabaseFunctions) {
-    // For Supabase Edge Functions, remove leading slash and map endpoints
+    // For Supabase Edge Functions, map to function name only (no subpaths)
     const cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
     
     // Map API endpoints to their corresponding Edge Functions
     if (cleanEndpoint.startsWith('session')) {
-      return `${API_BASE_URL}/session${cleanEndpoint.replace('session', '')}`;
+      return `${API_BASE_URL}/session`;
     } else if (cleanEndpoint.startsWith('health')) {
       return `${API_BASE_URL}/health`;
     } else if (cleanEndpoint.startsWith('transcript')) {
-      return `${API_BASE_URL}/transcript${cleanEndpoint.replace('transcript', '')}`;
+      return `${API_BASE_URL}/transcript`;
     }
     
     // Default: assume the endpoint matches the function name
-    return `${API_BASE_URL}/${cleanEndpoint}`;
+    const functionName = cleanEndpoint.split('/')[0];
+    return `${API_BASE_URL}/${functionName}`;
   } else {
     // For Express/local development, use the endpoint as-is
     return `${API_BASE_URL}${endpoint}`;
@@ -192,10 +193,20 @@ export const lessonApi = {
 export const sessionApi = {
   // Start a new training session
   async start(request: StartSessionRequest): Promise<{ session: Session; initialGuidance?: AgentResponseSet }> {
-    return apiRequest('/session', {
-      method: 'POST',
-      body: JSON.stringify(request),
-    });
+    if (isUsingSupabaseFunctions) {
+      return apiRequest('/session', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'start',
+          ...request
+        }),
+      });
+    } else {
+      return apiRequest('/session', {
+        method: 'POST',
+        body: JSON.stringify(request),
+      });
+    }
   },
 
   // Send user input to session
@@ -204,15 +215,36 @@ export const sessionApi = {
     aiResponse?: string;
     agentFeedback: AgentResponseSet;
   }> {
-    return apiRequest(`/session/${sessionId}/input`, {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
+    if (isUsingSupabaseFunctions) {
+      return apiRequest('/session', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'sendInput',
+          sessionId,
+          ...input
+        }),
+      });
+    } else {
+      return apiRequest(`/session/${sessionId}/input`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    }
   },
 
   // Get session state
   async get(sessionId: string): Promise<Session> {
-    return apiRequest(`/session/${sessionId}`);
+    if (isUsingSupabaseFunctions) {
+      return apiRequest('/session', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'get',
+          sessionId
+        }),
+      });
+    } else {
+      return apiRequest(`/session/${sessionId}`);
+    }
   },
 
   // Get session summary/results
@@ -223,14 +255,34 @@ export const sessionApi = {
     totalTime: number;
     keyInsights: string[];
   }> {
-    return apiRequest(`/session/${sessionId}/summary`);
+    if (isUsingSupabaseFunctions) {
+      return apiRequest('/session', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'getSummary',
+          sessionId
+        }),
+      });
+    } else {
+      return apiRequest(`/session/${sessionId}/summary`);
+    }
   },
 
   // End session
   async end(sessionId: string): Promise<void> {
-    return apiRequest(`/session/${sessionId}`, {
-      method: 'DELETE',
-    });
+    if (isUsingSupabaseFunctions) {
+      return apiRequest('/session', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'end',
+          sessionId
+        }),
+      });
+    } else {
+      return apiRequest(`/session/${sessionId}`, {
+        method: 'DELETE',
+      });
+    }
   },
 };
 
@@ -245,10 +297,20 @@ export const transcriptApi = {
       analysisTimestamp: Date;
     };
   }> {
-    return apiRequest('/transcript/review', {
-      method: 'POST',
-      body: JSON.stringify(request),
-    });
+    if (isUsingSupabaseFunctions) {
+      return apiRequest('/transcript', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'review',
+          ...request
+        }),
+      });
+    } else {
+      return apiRequest('/transcript/review', {
+        method: 'POST',
+        body: JSON.stringify(request),
+      });
+    }
   },
 };
 

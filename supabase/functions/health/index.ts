@@ -16,22 +16,79 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    const body = {
-      status: "ok",
-      version: "1.0.0",
-      timestamp: new Date().toISOString(),
-      services: {
-        server: "ok",
-      },
-    };
+    // Support both GET (legacy) and POST with action (new)
+    if (req.method === "GET") {
+      const body = {
+        status: "ok",
+        version: "1.0.0",
+        timestamp: new Date().toISOString(),
+        services: {
+          server: "ok",
+        },
+      };
 
-    return new Response(JSON.stringify(body), {
-      headers: {
-        "Content-Type": "application/json",
-        ...corsHeaders,
-      },
-      status: 200,
-    });
+      return new Response(JSON.stringify(body), {
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+        status: 200,
+      });
+    }
+
+    if (req.method === "POST") {
+      const body = await req.json().catch(() => ({} as any));
+      const { action } = body ?? {};
+
+      // For health, we can support action-based calls but also work without action
+      if (!action || action === "check") {
+        const responseBody = {
+          status: "ok",
+          version: "1.0.0",
+          timestamp: new Date().toISOString(),
+          services: {
+            server: "ok",
+          },
+        };
+
+        return new Response(JSON.stringify(responseBody), {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 200,
+        });
+      }
+
+      return new Response(
+        JSON.stringify({
+          error: "INVALID_ACTION",
+          message: `Unknown action: ${action}. Supported actions: check`,
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        error: "METHOD_NOT_ALLOWED",
+        message: "Only GET and POST methods are supported",
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+        status: 405,
+      }
+    );
+
   } catch (e: any) {
     return new Response(
       JSON.stringify({
