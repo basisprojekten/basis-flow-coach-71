@@ -5,6 +5,9 @@
 import express from 'express';
 import { sessionManager, SessionState } from '../services/sessionManager';
 import { createAgent } from '../agents/baseAgent';
+import { AnalystAgent } from '../agents/analystAgent';
+import { NavigatorAgent } from '../agents/navigatorAgent';
+import { RoleplayAgent } from '../agents/roleplayAgent';
 import { logger } from '../config/logger';
 import { validateAgentResponse } from '../middleware/guardrails';
 
@@ -221,8 +224,10 @@ router.post('/:id/input', validateAgentResponse('analyst'), async (req, res) => 
       hasErrors: Object.values(agentFeedback).some(f => f && typeof f === 'object' && 'error' in f)
     });
 
-    // Generate AI roleplay response (mock for now)
-    const aiResponse = await generateAIRoleplayResponse(content, agentContext);
+    // Generate AI roleplay response using RoleplayAgent
+    const roleplayAgent = new RoleplayAgent();
+    const roleplayResponse = await roleplayAgent.generateResponse(agentContext, content);
+    const aiResponse = roleplayResponse.content;
     
     // Add AI response to session
     if (aiResponse) {
@@ -359,31 +364,6 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-/**
- * Generate AI roleplay response (mock implementation)
- */
-async function generateAIRoleplayResponse(
-  userInput: string, 
-  context: any
-): Promise<string> {
-  // Mock responses based on input patterns
-  const responses = [
-    "I appreciate you taking the time to listen to my concerns. Can you help me understand what resources are available to support my child?",
-    "That's reassuring to hear. I'm wondering what I can do at home to help reinforce what they're learning in school?",
-    "I'm still worried about the situation. Could you walk me through what the next steps would look like?",
-    "Thank you for explaining that. I want to make sure I'm being supportive in the right way. What should I watch for?"
-  ];
-
-  // Simple pattern matching for demo
-  if (userInput.toLowerCase().includes('understand')) {
-    return responses[0];
-  } else if (userInput.toLowerCase().includes('help') || userInput.toLowerCase().includes('support')) {
-    return responses[1];
-  } else if (userInput.toLowerCase().includes('concern') || userInput.toLowerCase().includes('worry')) {
-    return responses[2];
-  } else {
-    return responses[3];
-  }
-}
+// Mock function removed - now using RoleplayAgent with real OpenAI calls
 
 export { router as sessionRoutes };

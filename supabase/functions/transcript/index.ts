@@ -3,6 +3,8 @@
 
 // deno-lint-ignore-file no-explicit-any
 
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -16,59 +18,139 @@ function jsonResponse(data: any, status = 200) {
   });
 }
 
-// Mock agent feedback for transcript analysis
-function generateTranscriptAnalysis(transcript: string) {
+// Real OpenAI-powered transcript analysis
+async function generateTranscriptAnalysis(transcript: string) {
+  const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!openAIApiKey) {
+    throw new Error('OPENAI_API_KEY not found in environment variables');
+  }
+
   const wordCount = transcript.split(/\s+/).length;
   const estimatedDuration = Math.ceil(wordCount / 150) * 60; // Assuming 150 words per minute
 
-  return {
-    analysis: {
-      analyst: {
-        rubric: {
-          empathy: Math.floor(Math.random() * 3) + 3, // 3-5
-          clarity: Math.floor(Math.random() * 3) + 3,
-          boundaries: Math.floor(Math.random() * 3) + 3,
-          engagement: Math.floor(Math.random() * 3) + 3
-        },
-        feedback: "The conversation demonstrates good listening skills and appropriate responses. Consider incorporating more open-ended questions to encourage deeper discussion.",
-        suggestions: [
-          "Use more reflective listening techniques",
-          "Ask follow-up questions to clarify parent concerns",
-          "Provide specific examples when discussing strategies"
-        ]
+  console.log('Generating transcript analysis with OpenAI', {
+    transcriptLength: transcript.length,
+    wordCount,
+    estimatedDuration
+  });
+
+  try {
+    // Generate holistic analysis using Reviewer agent approach
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openAIApiKey}`,
+        'Content-Type': 'application/json',
       },
-      navigator: {
-        guidance: "The conversation flow shows good progression. The professional maintained appropriate boundaries while showing empathy.",
-        nextSteps: [
-          "Schedule follow-up meeting",
-          "Prepare specific resource recommendations",
-          "Document key concerns raised"
-        ]
-      },
-      reviewer: {
-        overallScore: Math.floor(Math.random() * 21) + 70, // 70-90
-        strengths: [
-          "Active listening demonstrated",
-          "Professional tone maintained",
-          "Clear communication"
-        ],
-        improvements: [
-          "Could expand on available resources",
-          "More specific action items needed"
-        ],
-        recommendations: [
-          "Practice using open-ended questions",
-          "Develop resource reference sheet",
-          "Role-play challenging scenarios"
-        ]
-      }
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a Reviewer Agent analyzing a complete conversation transcript. Provide a holistic assessment of the entire interaction. Return analysis as JSON with this structure:
+{
+  "analyst": {
+    "rubric": {
+      "empathy": 1-5,
+      "clarity": 1-5, 
+      "boundaries": 1-5,
+      "engagement": 1-5
     },
-    metadata: {
-      wordCount,
-      estimatedDuration,
-      analysisTimestamp: new Date()
+    "feedback": "overall retrospective feedback on the conversation",
+    "suggestions": ["improvement suggestion 1", "suggestion 2", "suggestion 3"]
+  },
+  "navigator": {
+    "guidance": "overall guidance about the conversation quality",
+    "nextSteps": ["next step 1", "next step 2", "next step 3"]
+  },
+  "reviewer": {
+    "overallScore": 70-100,
+    "strengths": ["strength 1", "strength 2"],
+    "areasForImprovement": ["area 1", "area 2"],
+    "keyInsights": ["insight 1", "insight 2"]
+  }
+}`
+          },
+          {
+            role: 'user',
+            content: `Analyze this complete conversation transcript:\n\n${transcript}`
+          }
+        ],
+        max_tokens: 1000,
+        temperature: 0.4,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('OpenAI API error:', errorData);
+      throw new Error(`OpenAI API error: ${response.status}`);
     }
-  };
+
+    const data = await response.json();
+    let analysis;
+
+    try {
+      analysis = JSON.parse(data.choices[0].message.content);
+    } catch {
+      // Fallback if JSON parsing fails
+      analysis = {
+        analyst: {
+          rubric: { empathy: 3, clarity: 3, boundaries: 3, engagement: 3 },
+          feedback: data.choices[0].message.content,
+          suggestions: ["Continue developing communication skills", "Practice active listening", "Maintain professional boundaries"]
+        },
+        navigator: {
+          guidance: "Focus on building stronger rapport in future interactions",
+          nextSteps: ["Prepare for follow-up", "Document key points", "Plan next steps"]
+        },
+        reviewer: {
+          overallScore: 75,
+          strengths: ["Professional demeanor", "Appropriate responses"],
+          areasForImprovement: ["Could improve specific areas"],
+          keyInsights: ["Conversation shows good engagement"]
+        }
+      };
+    }
+
+    console.log('Transcript analysis generated successfully');
+    return {
+      analysis,
+      metadata: {
+        wordCount,
+        estimatedDuration,
+        analysisTimestamp: new Date()
+      }
+    };
+  } catch (error) {
+    console.error('Error generating transcript analysis:', error);
+    // Return fallback analysis on error
+    return {
+      analysis: {
+        analyst: {
+          rubric: { empathy: 3, clarity: 3, boundaries: 3, engagement: 3 },
+          feedback: "Unable to analyze transcript due to technical error",
+          suggestions: ["Continue developing communication skills", "Practice active listening"]
+        },
+        navigator: {
+          guidance: "Focus on building stronger rapport in future interactions",
+          nextSteps: ["Prepare for follow-up", "Document key points"]
+        },
+        reviewer: {
+          overallScore: 75,
+          strengths: ["Professional demeanor"],
+          areasForImprovement: ["Technical analysis unavailable"],
+          keyInsights: ["Conversation analysis incomplete"]
+        }
+      },
+      metadata: {
+        wordCount,
+        estimatedDuration,
+        analysisTimestamp: new Date(),
+        error: true
+      }
+    };
+  }
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -117,7 +199,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         });
 
         // Generate analysis
-        const result = generateTranscriptAnalysis(transcript);
+        const result = await generateTranscriptAnalysis(transcript);
 
         return jsonResponse(result);
       }

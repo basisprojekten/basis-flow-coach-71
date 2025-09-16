@@ -3,6 +3,7 @@
 
 // deno-lint-ignore-file no-explicit-any
 
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 
 const corsHeaders = {
@@ -335,44 +336,195 @@ async function endSession(sessionId: string): Promise<boolean> {
   return true;
 }
 
-// Mock AI response generation
-function generateAIRoleplayResponse(userInput: string): string {
-  const responses = [
-    "I appreciate you taking the time to listen to my concerns. Can you help me understand what resources are available to support my child?",
-    "That's reassuring to hear. I'm wondering what I can do at home to help reinforce what they're learning in school?",
-    "I'm still worried about the situation. Could you walk me through what the next steps would look like?",
-    "Thank you for explaining that. I want to make sure I'm being supportive in the right way. What should I watch for?"
-  ];
+// Real OpenAI-powered roleplay response generation
+async function generateRoleplayResponse(userInput: string, context: any): Promise<string> {
+  const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!openAIApiKey) {
+    throw new Error('OPENAI_API_KEY not found in environment variables');
+  }
 
-  // Simple pattern matching for demo
-  if (userInput.toLowerCase().includes('understand')) {
-    return responses[0];
-  } else if (userInput.toLowerCase().includes('help') || userInput.toLowerCase().includes('support')) {
-    return responses[1];
-  } else if (userInput.toLowerCase().includes('concern') || userInput.toLowerCase().includes('worry')) {
-    return responses[2];
-  } else {
-    return responses[3];
+  console.log('Generating roleplay response with OpenAI', {
+    userInputLength: userInput.length,
+    hasContext: !!context
+  });
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openAIApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a concerned parent character in a training simulation. You are worried about your child's academic progress and emotional well-being. You want to understand what support is available and how you can help at home. Stay in character as a worried but cooperative parent seeking help. Respond naturally and authentically to what the school professional just said.`
+          },
+          {
+            role: 'user',
+            content: `The school professional just said: "${userInput}". How do you respond as the concerned parent?`
+          }
+        ],
+        max_tokens: 150,
+        temperature: 0.7,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('OpenAI API error:', errorData);
+      throw new Error(`OpenAI API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
+    }
+
+    const data = await response.json();
+    console.log('OpenAI roleplay response generated successfully');
+    return data.choices[0].message.content;
+  } catch (error) {
+    console.error('Error generating roleplay response:', error);
+    // Fallback to simple response on error
+    return "I appreciate you taking the time to discuss this with me. Could you help me understand what the next steps would be?";
   }
 }
 
-// Mock agent responses for demo
-function generateMockAgentFeedback(content: string) {
-  return {
-    analyst: {
-      rubric: {
-        empathy: Math.floor(Math.random() * 3) + 3, // 3-5
-        clarity: Math.floor(Math.random() * 3) + 3,
-        boundaries: Math.floor(Math.random() * 3) + 3
+// Real OpenAI-powered agent feedback generation
+async function generateAgentFeedback(content: string, conversationHistory: ConversationMessage[]): Promise<any> {
+  const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!openAIApiKey) {
+    throw new Error('OPENAI_API_KEY not found in environment variables');
+  }
+
+  console.log('Generating agent feedback with OpenAI', {
+    contentLength: content.length,
+    historyLength: conversationHistory.length
+  });
+
+  const agentFeedback: any = {};
+
+  try {
+    // Generate Analyst feedback
+    const analystResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openAIApiKey}`,
+        'Content-Type': 'application/json',
       },
-      feedback: `Good use of ${content.includes('understand') ? 'clarifying language' : 'supportive tone'}. Consider expanding on the specific resources available.`,
-      suggestions: ["Ask follow-up questions", "Provide specific examples"]
-    },
-    navigator: {
-      guidance: `Continue to ${content.includes('worry') ? 'acknowledge their concerns' : 'build on this positive interaction'}. The parent seems engaged.`,
-      nextSteps: ["Listen actively", "Offer concrete next steps"]
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `You are an Analyst Agent providing retrospective feedback. Analyze ONLY what just happened in the student's response. Never give future advice. Return feedback as JSON with this exact structure:
+{
+  "type": "iterative_feedback",
+  "segment_id": "seg_" + random_8_chars,
+  "rubric": [
+    {"field": "empathy", "score": 1-5},
+    {"field": "clarity", "score": 1-5},
+    {"field": "boundaries", "score": 1-5}
+  ],
+  "evidence_quotes": ["quote from student response"],
+  "past_only_feedback": "retrospective analysis focusing only on what just happened"
+}`
+          },
+          {
+            role: 'user',
+            content: `Analyze this student response: "${content}"`
+          }
+        ],
+        max_tokens: 400,
+        temperature: 0.3,
+      }),
+    });
+
+    if (analystResponse.ok) {
+      const analystData = await analystResponse.json();
+      try {
+        agentFeedback.analyst = JSON.parse(analystData.choices[0].message.content);
+      } catch {
+        // Fallback if JSON parsing fails
+        agentFeedback.analyst = {
+          type: "iterative_feedback",
+          segment_id: "seg_" + Math.random().toString(36).substr(2, 8),
+          rubric: [
+            {"field": "empathy", "score": 3},
+            {"field": "clarity", "score": 3},
+            {"field": "boundaries", "score": 3}
+          ],
+          evidence_quotes: [content.substring(0, 50) + "..."],
+          past_only_feedback: analystData.choices[0].message.content
+        };
+      }
     }
-  };
+
+    // Generate Navigator feedback
+    const navigatorResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openAIApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a Navigator Agent providing feedforward guidance. Give ONLY future-focused guidance. Never analyze what happened. Return guidance as JSON with this exact structure:
+{
+  "type": "feedforward",
+  "guidance": "forward-looking guidance message",
+  "next_steps": ["action 1", "action 2"]
+}`
+          },
+          {
+            role: 'user',
+            content: `Provide feedforward guidance for the student's next response. They just said: "${content}"`
+          }
+        ],
+        max_tokens: 300,
+        temperature: 0.7,
+      }),
+    });
+
+    if (navigatorResponse.ok) {
+      const navigatorData = await navigatorResponse.json();
+      try {
+        agentFeedback.navigator = JSON.parse(navigatorData.choices[0].message.content);
+      } catch {
+        // Fallback if JSON parsing fails
+        agentFeedback.navigator = {
+          type: "feedforward",
+          guidance: navigatorData.choices[0].message.content,
+          next_steps: ["Continue building rapport", "Ask clarifying questions"]
+        };
+      }
+    }
+
+    console.log('Agent feedback generated successfully');
+    return agentFeedback;
+  } catch (error) {
+    console.error('Error generating agent feedback:', error);
+    // Return fallback mock data on error
+    return {
+      analyst: {
+        type: "iterative_feedback",
+        segment_id: "seg_error",
+        rubric: [
+          {"field": "empathy", "score": 3},
+          {"field": "clarity", "score": 3},
+          {"field": "boundaries", "score": 3}
+        ],
+        evidence_quotes: ["Error occurred"],
+        past_only_feedback: "Unable to analyze due to technical error"
+      },
+      navigator: {
+        type: "feedforward",
+        guidance: "Continue with the conversation",
+        next_steps: ["Stay engaged", "Listen actively"]
+      }
+    };
+  }
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -489,7 +641,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         }
 
         // Generate AI roleplay response
-        const aiResponse = generateAIRoleplayResponse(content);
+        const aiResponse = await generateRoleplayResponse(content, { session: currentSession });
         
         // Add AI response to session
         if (aiResponse) {
@@ -500,8 +652,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
           });
         }
 
-        // Generate mock agent feedback
-        const agentFeedback = generateMockAgentFeedback(content);
+        // Generate real agent feedback
+        const agentFeedback = await generateAgentFeedback(content, currentSession.conversationHistory);
 
         // Get updated session state
         const updatedSession = await getSession(sessionId);
