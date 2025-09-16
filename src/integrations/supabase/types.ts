@@ -14,7 +14,117 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      cases: {
+        Row: {
+          background: string
+          created_at: string
+          goals: string | null
+          id: string
+          role: string
+        }
+        Insert: {
+          background: string
+          created_at?: string
+          goals?: string | null
+          id: string
+          role: string
+        }
+        Update: {
+          background?: string
+          created_at?: string
+          goals?: string | null
+          id?: string
+          role?: string
+        }
+        Relationships: []
+      }
+      exercises: {
+        Row: {
+          case_id: string
+          created_at: string
+          focus_hint: string | null
+          id: string
+          protocols: Json
+          title: string
+          toggles: Json
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          focus_hint?: string | null
+          id: string
+          protocols?: Json
+          title: string
+          toggles?: Json
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          focus_hint?: string | null
+          id?: string
+          protocols?: Json
+          title?: string
+          toggles?: Json
+        }
+        Relationships: []
+      }
+      lessons: {
+        Row: {
+          created_at: string
+          exercise_order: Json
+          id: string
+          objectives: Json
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          exercise_order?: Json
+          id: string
+          objectives?: Json
+          title: string
+        }
+        Update: {
+          created_at?: string
+          exercise_order?: Json
+          id?: string
+          objectives?: Json
+          title?: string
+        }
+        Relationships: []
+      }
+      sessions: {
+        Row: {
+          exercise_id: string | null
+          id: string
+          last_activity_at: string
+          lesson_id: string | null
+          mode: string
+          started_at: string
+          state: Json
+          student_id: string | null
+        }
+        Insert: {
+          exercise_id?: string | null
+          id?: string
+          last_activity_at?: string
+          lesson_id?: string | null
+          mode: string
+          started_at?: string
+          state?: Json
+          student_id?: string | null
+        }
+        Update: {
+          exercise_id?: string | null
+          id?: string
+          last_activity_at?: string
+          lesson_id?: string | null
+          mode?: string
+          started_at?: string
+          state?: Json
+          student_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
