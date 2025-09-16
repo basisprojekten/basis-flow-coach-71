@@ -14,9 +14,21 @@ import {
   BasisError
 } from '@/types/basis';
 
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? '/api' 
-  : 'http://localhost:3001/api';
+const SUPABASE_FUNCTIONS_URL = "https://ammawhrjbwqmwhsbdjoa.supabase.co/functions/v1";
+
+function getApiBaseUrl() {
+  try {
+    if (typeof window !== 'undefined') {
+      const host = window.location.hostname;
+      const isLocal = host === 'localhost' || host === '127.0.0.1';
+      return isLocal ? 'http://localhost:3001/api' : SUPABASE_FUNCTIONS_URL;
+    }
+  } catch {}
+  // Fallback to Supabase Edge Functions in non-browser/unknown envs
+  return SUPABASE_FUNCTIONS_URL;
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 // Error handling utility
 class BasisApiError extends Error {
