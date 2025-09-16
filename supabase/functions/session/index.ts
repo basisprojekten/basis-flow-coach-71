@@ -343,8 +343,9 @@ async function generateRoleplayResponse(userInput: string, context: any): Promis
     throw new Error('OPENAI_API_KEY not found in environment variables');
   }
 
-  console.log('Generating roleplay response with OpenAI', {
-    userInputLength: userInput.length,
+  console.log('About to call OpenAI for roleplay response', {
+    action: 'roleplay',
+    contentLength: userInput.length,
     hasContext: !!context
   });
 
@@ -379,6 +380,7 @@ async function generateRoleplayResponse(userInput: string, context: any): Promis
     }
 
     const data = await response.json();
+    console.log('OpenAI response raw', data);
     console.log('OpenAI roleplay response generated successfully');
     return data.choices[0].message.content;
   } catch (error) {
@@ -395,7 +397,8 @@ async function generateAgentFeedback(content: string, conversationHistory: Conve
     throw new Error('OPENAI_API_KEY not found in environment variables');
   }
 
-  console.log('Generating agent feedback with OpenAI', {
+  console.log('About to call OpenAI for agent feedback', {
+    action: 'agent_feedback',
     contentLength: content.length,
     historyLength: conversationHistory.length
   });
@@ -440,6 +443,7 @@ async function generateAgentFeedback(content: string, conversationHistory: Conve
 
     if (analystResponse.ok) {
       const analystData = await analystResponse.json();
+      console.log('OpenAI Analyst response raw', analystData);
       try {
         agentFeedback.analyst = JSON.parse(analystData.choices[0].message.content);
       } catch {
@@ -489,6 +493,7 @@ async function generateAgentFeedback(content: string, conversationHistory: Conve
 
     if (navigatorResponse.ok) {
       const navigatorData = await navigatorResponse.json();
+      console.log('OpenAI Navigator response raw', navigatorData);
       try {
         agentFeedback.navigator = JSON.parse(navigatorData.choices[0].message.content);
       } catch {
@@ -620,11 +625,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
         // Get session
         const session = await getSession(sessionId);
         if (!session) {
+          console.log('Session not found in sendInput', { sessionId });
           return jsonResponse({
             error: "SESSION_NOT_FOUND",
             message: "Training session not found or expired",
           }, 404);
         }
+
+        console.log('Session retrieved successfully in sendInput', { 
+          sessionId, 
+          messageCount: session.conversationHistory.length 
+        });
 
         // Add user message to session
         const userMessage = await addMessage(sessionId, {
@@ -641,7 +652,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         }
 
         // Generate AI roleplay response
-        const aiResponse = await generateRoleplayResponse(content, { session: currentSession });
+        const aiResponse = await generateRoleplayResponse(content, { session });
         
         // Add AI response to session
         if (aiResponse) {
@@ -653,7 +664,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         }
 
         // Generate real agent feedback
-        const agentFeedback = await generateAgentFeedback(content, currentSession.conversationHistory);
+        const agentFeedback = await generateAgentFeedback(content, session.conversationHistory);
 
         // Get updated session state
         const updatedSession = await getSession(sessionId);
@@ -681,11 +692,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
         
         const session = await getSession(sessionId);
         if (!session) {
+          console.log('Session not found in get', { sessionId });
           return jsonResponse({
             error: "SESSION_NOT_FOUND",
             message: "Session not found or expired",
           }, 404);
         }
+
+        console.log('Session retrieved successfully in get', { 
+          sessionId, 
+          messageCount: session.conversationHistory.length 
+        });
 
         return jsonResponse({
           session: {
@@ -712,11 +729,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
         
         const success = await endSession(sessionId);
         if (!success) {
+          console.log('Session not found in end', { sessionId });
           return jsonResponse({
             error: "SESSION_NOT_FOUND",
             message: "Session not found or already ended",
           }, 404);
         }
+
+        console.log('Session ended successfully', { sessionId });
 
         return jsonResponse({ success: true });
       }
