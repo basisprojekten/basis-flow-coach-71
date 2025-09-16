@@ -1,7 +1,1 @@
 project_id = "ammawhrjbwqmwhsbdjoa"
-
-[functions.health]
-verify_jwt = false
-
-[functions.session]
-verify_jwt = false
