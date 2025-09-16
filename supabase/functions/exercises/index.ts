@@ -1,3 +1,5 @@
+console.log("EXERCISES FUNCTION v3 LOADED", { now: new Date().toISOString() });
+
 // Supabase Edge Function: exercises
 // Handles exercise creation, retrieval, and management
 
@@ -57,40 +59,71 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const body = await req.json();
     const { action } = body;
 
-    console.log(`Exercises function called with action: ${action}`);
+    console.log("Exercises function called", { action, rawBody: body });
 
     switch (action) {
       case 'create': {
-        const { title, focusHint, case: caseData, toggles, protocolStack } = body;
+        console.log("exercises.create: start");
+
+        // Normalize inputs (accept both protocolStack and protocols, set safe defaults)
+        const protocolStack = Array.isArray(body.protocolStack) ? body.protocolStack : [];
+        const protocols = protocolStack.length > 0
+          ? protocolStack
+          : (Array.isArray(body.protocols) && body.protocols.length > 0 ? body.protocols : ["basis-v1"]);
+
+        const toggles = body.toggles ?? { feedforward: true, iterative: true, mode: "text", skipRoleplayForGlobalFeedback: false };
+
+        const { title, focusHint, case: caseData } = body;
+        console.log("exercises.create: normalized inputs", {
+          title,
+          focusHint,
+          caseData,
+          protocols,
+          toggles
+        });
 
         if (!title || !focusHint || !caseData) {
+          console.log("exercises.create: missing required fields", { titlePresent: !!title, focusHintPresent: !!focusHint, casePresent: !!caseData });
           return jsonResponse({
             error: "MISSING_REQUIRED_FIELDS",
             message: "Title, focusHint, and case data are required",
           }, 400);
         }
 
+        // IDs
         const exerciseCode = generateExerciseCode();
-        const caseId = `case-${Math.random().toString(36).substr(2, 8)}`;
+        const caseId = `case_${crypto.randomUUID().slice(0,8)}`;
+        console.log("exercises.create: generated IDs", { exerciseCode, caseId });
 
-        // Normalize protocols from protocolStack
-        const protocols = Array.isArray(protocolStack) && protocolStack.length > 0
-          ? protocolStack
-          : ["basis-v1"]; // sensible default
-        
+        // Payloads we will insert
+        const casePayload = {
+          id: caseId,
+          role: caseData?.role,
+          background: caseData?.background,
+          goals: caseData?.goals,
+          created_at: new Date().toISOString(),
+        };
+        console.log("Prepared insert payload for cases:", casePayload);
+
+        const exercisePayload = {
+          id: exerciseCode,
+          title,
+          focus_hint: focusHint,
+          case_id: caseId,
+          toggles,
+          protocols,
+          created_at: new Date().toISOString(),
+        };
+        console.log("Prepared insert payload for exercises:", exercisePayload);
+
         // 1) Create the case row
+        console.log("Inserting into cases ...");
         const { error: caseError } = await supabase
           .from('cases')
-          .insert({
-            id: caseId,
-            role: caseData.role,
-            background: caseData.background,
-            goals: caseData.goals,
-            created_at: new Date().toISOString(),
-          });
+          .insert(casePayload);
 
         if (caseError) {
-          console.error('Error creating case for exercise:', caseError);
+          console.error("Case insert failed", { code: caseError.code, message: caseError.message, details: caseError });
           return jsonResponse({
             error: "DATABASE_ERROR",
             message: "Failed to create case for exercise",
@@ -99,22 +132,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
         }
         
         // 2) Create the exercise record linking the case
+        console.log("Inserting into exercises ...");
         const { data: exercise, error: exerciseError } = await supabase
           .from('exercises')
-          .insert({
-            id: exerciseCode,
-            title,
-            focus_hint: focusHint,
-            case_id: caseId,
-            toggles: toggles,
-            protocols: protocols,
-            created_at: new Date().toISOString(),
-          })
+          .insert(exercisePayload)
           .select()
           .single();
 
         if (exerciseError) {
-          console.error('Error creating exercise:', exerciseError);
+          console.error("Exercise insert failed", { code: exerciseError.code, message: exerciseError.message, details: exerciseError });
           return jsonResponse({
             error: "DATABASE_ERROR",
             message: "Failed to create exercise",
@@ -122,7 +148,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
           }, 500);
         }
 
-        console.log('Exercise created successfully:', { id: exerciseCode, title, caseId });
+        if (exercise) {
+          console.log("Exercise created successfully", { id: exerciseCode, title, caseId });
+        }
 
         return jsonResponse({
           id: exerciseCode,
@@ -132,6 +160,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }
 
       case 'list': {
+        console.log("exercises.list: start");
+        
         const { data: exercises, error } = await supabase
           .from('exercises')
           .select('*')
@@ -150,6 +180,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
       case 'get': {
         const { exerciseId } = body;
+        console.log("exercises.get: start", { exerciseId });
 
         if (!exerciseId) {
           return jsonResponse({
