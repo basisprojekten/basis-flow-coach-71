@@ -5,6 +5,7 @@
 import express from 'express';
 import { sessionManager } from '../services/sessionManager';
 import { logger } from '../config/logger';
+import { checkSupabaseConnection } from '../services/supabaseClient';
 
 const router = express.Router();
 
@@ -12,7 +13,7 @@ const router = express.Router();
  * GET /api/health
  * Basic health check
  */
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const health = {
       status: 'ok',
@@ -21,13 +22,23 @@ router.get('/', (req, res) => {
       services: {
         server: 'ok',
         openai: process.env.OPENAI_API_KEY ? 'ok' : 'error',
+        supabase: 'ok',
         sessions: 'ok'
       }
     };
 
+    // Check Supabase connection
+    try {
+      const supabaseHealthy = await checkSupabaseConnection();
+      health.services.supabase = supabaseHealthy ? 'ok' : 'error';
+    } catch (error) {
+      health.services.supabase = 'error';
+      health.status = 'degraded';
+    }
+
     // Check session manager
     try {
-      const activeSessions = sessionManager.getActiveSessions();
+      const activeSessions = await sessionManager.getActiveSessions();
       health.services.sessions = 'ok';
     } catch (error) {
       health.services.sessions = 'error';
@@ -61,9 +72,12 @@ router.get('/', (req, res) => {
  * GET /api/health/detailed
  * Detailed system diagnostics
  */
-router.get('/detailed', (req, res) => {
+router.get('/detailed', async (req, res) => {
   try {
-    const activeSessions = sessionManager.getActiveSessions();
+    const [activeSessions, supabaseHealthy] = await Promise.all([
+      sessionManager.getActiveSessions(),
+      checkSupabaseConnection()
+    ]);
     
     const health = {
       status: 'ok',
@@ -76,6 +90,10 @@ router.get('/detailed', (req, res) => {
         openai: {
           status: process.env.OPENAI_API_KEY ? 'ok' : 'error',
           model: process.env.OPENAI_MODEL || 'gpt-4o-mini'
+        },
+        supabase: {
+          status: supabaseHealthy ? 'ok' : 'error',
+          url: process.env.SUPABASE_URL ? 'configured' : 'missing'
         },
         sessions: {
           status: 'ok',
@@ -109,9 +127,9 @@ router.get('/detailed', (req, res) => {
  * GET /api/health/sessions
  * Session-specific health information
  */
-router.get('/sessions', (req, res) => {
+router.get('/sessions', async (req, res) => {
   try {
-    const activeSessions = sessionManager.getActiveSessions();
+    const activeSessions = await sessionManager.getActiveSessions();
     
     res.json({
       status: 'ok',

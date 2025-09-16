@@ -26,7 +26,7 @@ router.post('/', async (req, res) => {
     }
 
     // Create session
-    const session = sessionManager.createSession({
+    const session = await sessionManager.createSession({
       mode: lessonCode ? 'lesson' : 'exercise',
       exerciseCode,
       lessonCode
@@ -102,7 +102,7 @@ router.post('/:id/input', validateAgentResponse('analyst'), async (req, res) => 
     }
 
     // Get session
-    const session = sessionManager.getSession(sessionId);
+    const session = await sessionManager.getSession(sessionId);
     if (!session) {
       return res.status(404).json({
         error: 'SESSION_NOT_FOUND',
@@ -111,7 +111,7 @@ router.post('/:id/input', validateAgentResponse('analyst'), async (req, res) => 
     }
 
     // Add user message to session
-    const userMessage = sessionManager.addMessage(sessionId, {
+    const userMessage = await sessionManager.addMessage(sessionId, {
       role: 'user',
       content: content.trim(),
       metadata: { inputTimestamp: timestamp }
@@ -185,7 +185,7 @@ router.post('/:id/input', validateAgentResponse('analyst'), async (req, res) => 
     
     // Add AI response to session
     if (aiResponse) {
-      sessionManager.addMessage(sessionId, {
+      await sessionManager.addMessage(sessionId, {
         role: 'assistant',
         content: aiResponse,
         metadata: { generated: true }
@@ -193,7 +193,7 @@ router.post('/:id/input', validateAgentResponse('analyst'), async (req, res) => 
     }
 
     // Update session state
-    const updatedSession = sessionManager.getSession(sessionId);
+    const updatedSession = await sessionManager.getSession(sessionId);
 
     res.json({
       session: {
@@ -222,11 +222,11 @@ router.post('/:id/input', validateAgentResponse('analyst'), async (req, res) => 
  * GET /api/session/:id
  * Get session state
  */
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const { id: sessionId } = req.params;
     
-    const session = sessionManager.getSession(sessionId);
+    const session = await sessionManager.getSession(sessionId);
     if (!session) {
       return res.status(404).json({
         error: 'SESSION_NOT_FOUND',
@@ -263,11 +263,11 @@ router.get('/:id', (req, res) => {
  * DELETE /api/session/:id
  * End session
  */
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const { id: sessionId } = req.params;
     
-    const ended = sessionManager.endSession(sessionId);
+    const ended = await sessionManager.endSession(sessionId);
     
     if (!ended) {
       return res.status(404).json({
