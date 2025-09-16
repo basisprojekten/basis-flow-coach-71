@@ -87,14 +87,15 @@ class SessionManager {
     
     if (config.exerciseCode) {
       try {
+        logger.info('Attempting to fetch exercise from Supabase', { exerciseCode: config.exerciseCode });
         const { data: exercise, error } = await supabase
           .from('exercises')
           .select('*')
           .eq('id', config.exerciseCode)
-          .single();
+          .maybeSingle();
           
         if (error || !exercise) {
-          logger.warn('Exercise not found, falling back to demo configuration', { 
+          logger.warn('Exercise not found or query error, falling back to demo configuration', { 
             exerciseCode: config.exerciseCode, 
             error: error?.message 
           });
@@ -120,7 +121,7 @@ class SessionManager {
       // Use demo configuration when no exercise code provided
       exerciseConfig = demoExerciseConfig;
     }
-
+    logger.info('Using exercise configuration', { id: exerciseConfig.id, title: exerciseConfig.title });
     const initialMessage: ConversationMessage = {
       id: nanoid(8),
       role: 'system',

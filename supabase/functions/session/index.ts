@@ -91,43 +91,61 @@ async function createSession(config: {
   
   // Get exercise configuration from database
   let exerciseConfig: ExerciseConfig;
+  // Get exercise configuration from database with safe fallback
+  const demoExerciseConfig: ExerciseConfig = {
+    id: 'demo-001',
+    title: 'Confidentiality Discussion Training',
+    caseId: 'concerned-parent-case',
+    toggles: {
+      feedforward: true,
+      iterative: true,
+      mode: 'text',
+      skipRoleplayForGlobalFeedback: false
+    },
+    focusHint: 'Practice maintaining professional boundaries while showing empathy',
+    protocols: ['basis-v1']
+  };
   
   if (config.exerciseCode) {
-    const { data: exercise, error } = await supabase
-      .from('exercises')
-      .select('*')
-      .eq('id', config.exerciseCode)
-      .single();
+    console.log('Attempting to fetch exercise from Supabase', { exerciseCode: config.exerciseCode });
+    try {
+      const { data: exercise, error } = await supabase
+        .from('exercises')
+        .select('*')
+        .eq('id', config.exerciseCode)
+        .maybeSingle();
       
-    if (error || !exercise) {
-      console.error('Exercise not found', { exerciseCode: config.exerciseCode, error });
-      throw new Error(`Exercise not found: ${config.exerciseCode}`);
+      console.log('Exercise fetch result', { hasError: !!error, found: !!exercise });
+      
+      if (error || !exercise) {
+        console.warn('Exercise not found or query error. Falling back to demo exercise.', {
+          exerciseCode: config.exerciseCode,
+          error: error?.message
+        });
+        exerciseConfig = demoExerciseConfig;
+      } else {
+        exerciseConfig = {
+          id: exercise.id,
+          title: exercise.title,
+          caseId: exercise.case_id,
+          toggles: exercise.toggles as any,
+          focusHint: exercise.focus_hint || '',
+          protocols: exercise.protocols as string[]
+        };
+      }
+    } catch (err) {
+      console.warn('Unexpected error during exercise fetch. Falling back to demo exercise.', {
+        exerciseCode: config.exerciseCode,
+        error: String(err)
+      });
+      exerciseConfig = demoExerciseConfig;
     }
-    
-    exerciseConfig = {
-      id: exercise.id,
-      title: exercise.title,
-      caseId: exercise.case_id,
-      toggles: exercise.toggles as any,
-      focusHint: exercise.focus_hint || '',
-      protocols: exercise.protocols as string[]
-    };
   } else {
-    // Default exercise configuration
-    exerciseConfig = {
-      id: 'demo-001',
-      title: 'Confidentiality Discussion Training',
-      caseId: 'concerned-parent-case',
-      toggles: {
-        feedforward: true,
-        iterative: true,
-        mode: 'text',
-        skipRoleplayForGlobalFeedback: false
-      },
-      focusHint: 'Practice maintaining professional boundaries while showing empathy',
-      protocols: ['basis-v1']
-    };
+    // Default to demo exercise configuration when no exerciseCode is provided
+    exerciseConfig = demoExerciseConfig;
   }
+
+  console.log('Using exercise configuration', { id: exerciseConfig.id, title: exerciseConfig.title });
 
   const initialMessage: ConversationMessage = {
     id: generateId(8),
