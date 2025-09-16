@@ -213,16 +213,12 @@ router.post('/:id/input', validateAgentResponse('analyst'), async (req, res) => 
     // Wait for all agent responses
     await Promise.all(agentPromises);
 
-    // Log debug information for agent feedback
-    Object.entries(agentFeedback).forEach(([agentType, feedback]) => {
-      if (feedback && typeof feedback === 'object' && 'error' in feedback) {
-        logger.debug('Agent feedback contains error', {
-          sessionId,
-          agentType,
-          error: feedback.error,
-          hasRaw: 'raw' in feedback
-        });
-      }
+    // Log complete agent feedback for debugging
+    logger.debug('Complete agent feedback', {
+      sessionId,
+      agentFeedback: JSON.stringify(agentFeedback, null, 2),
+      feedbackKeys: Object.keys(agentFeedback),
+      hasErrors: Object.values(agentFeedback).some(f => f && typeof f === 'object' && 'error' in f)
     });
 
     // Generate AI roleplay response (mock for now)
