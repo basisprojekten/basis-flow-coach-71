@@ -43,29 +43,47 @@ export abstract class BaseAgent {
   async generateResponse(context: AgentContext, userInput?: string): Promise<AgentResponse> {
     let attempts = 0;
     const maxAttempts = this.config.maxRetries;
+    let lastRawResponse: AgentResponse | undefined;
 
     while (attempts < maxAttempts) {
       try {
         attempts++;
-        
+
         const response = await this.callOpenAI(context, userInput);
-        
+        // Debug: Log raw output BEFORE guardrails are applied
+        try {
+          logger.info(`Agent ${this.agentType} raw output before guardrails`, {
+            sessionId: context.sessionId,
+            raw: response
+          });
+        } catch (_) {
+          // no-op logging safety
+        }
+        lastRawResponse = response;
+
         // Validate guardrails
         const responseText = JSON.stringify(response);
         const violations = guardrailValidator.validateTemporal(this.agentType, responseText);
-        
+
         if (violations.length > 0) {
           guardrailValidator.logViolations(violations, context.sessionId);
-          
+
           if (attempts >= maxAttempts) {
-            throw new Error(`Agent ${this.agentType} violated guardrails after ${maxAttempts} attempts: ${violations.map(v => v.matches.join(', ')).join('; ')}`);
+            const err: any = new Error(
+              `Agent ${this.agentType} violated guardrails after ${maxAttempts} attempts: ${violations
+                .map(v => v.matches.join(', '))
+                .join('; ')}`
+            );
+            // Attach raw response for upstream handlers (frontend placeholders)
+            err.rawResponse = lastRawResponse;
+            throw err;
           }
-          
+
           logger.warn(`Agent ${this.agentType} guardrail violation, retrying (attempt ${attempts}/${maxAttempts})`, {
             sessionId: context.sessionId,
             violations: violations.map(v => v.matches)
           });
-          
+
           continue;
         }
 
@@ -73,11 +91,10 @@ export abstract class BaseAgent {
         logger.info(`Agent ${this.agentType} generated valid response`, {
           sessionId: context.sessionId,
           attempts,
-          responseType: response.type
+          responseType: (response as any).type
         });
 
         return response;
-
       } catch (error) {
         logger.error(`Agent ${this.agentType} generation error (attempt ${attempts}/${maxAttempts})`, {
           sessionId: context.sessionId,
@@ -86,7 +103,12 @@ export abstract class BaseAgent {
         });
 
         if (attempts >= maxAttempts) {
-          throw new Error(`Agent ${this.agentType} failed after ${maxAttempts} attempts: ${error instanceof Error ? error.message : String(error)}`);
+          const finalErr: any = new Error(
+            `Agent ${this.agentType} failed after ${maxAttempts} attempts: ${error instanceof Error ? error.message : String(error)}`
+          );
+          // Attach last raw response if we had one
+          if (lastRawResponse) finalErr.rawResponse = lastRawResponse;
+          throw finalErr;
         }
       }
     }

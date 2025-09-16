@@ -125,6 +125,11 @@ router.post('/:id/input', validateAgentResponse('analyst'), async (req, res) => 
     }
 
     // Prepare agent context
+    logger.info('Session input toggles', {
+      sessionId,
+      toggles: session.config.toggles
+    });
+
     const agentContext = {
       sessionId,
       protocols: session.protocols,
@@ -142,23 +147,38 @@ router.post('/:id/input', validateAgentResponse('analyst'), async (req, res) => 
 
     // Analyst feedback (if enabled)
     if (session.config.toggles.iterative) {
+      logger.info('Invoking AnalystAgent for iterative feedback', { sessionId });
       agentPromises.push(
         createAgent('analyst')
           .generateResponse(agentContext, content)
           .then(response => {
+            logger.info('AnalystAgent produced response (pre-middleware)', {
+              sessionId,
+              hasRubric: Array.isArray((response as any)?.rubric),
+              responseType: (response as any)?.type
+            });
             agentFeedback.analyst = response;
           })
           .catch(error => {
+            const raw = (error as any)?.rawResponse ? JSON.stringify((error as any).rawResponse) : undefined;
             logger.error('Analyst agent failed', {
               sessionId,
-              error: error instanceof Error ? error.message : String(error)
+              error: error instanceof Error ? error.message : String(error),
+              raw
             });
+            agentFeedback.analyst = {
+              error: `Analyst failed: ${error instanceof Error ? error.message : String(error)}`,
+              raw
+            };
           })
       );
+    } else {
+      logger.info('Skipping AnalystAgent: iterative toggle disabled', { sessionId });
     }
 
     // Navigator guidance (if enabled)
     if (session.config.toggles.feedforward) {
+      logger.info('Invoking NavigatorAgent for feedforward guidance', { sessionId });
       agentPromises.push(
         createAgent('navigator')
           .generateMidConversationGuidance(agentContext, {
@@ -166,16 +186,29 @@ router.post('/:id/input', validateAgentResponse('analyst'), async (req, res) => 
             lastAnalystScores: agentFeedback.analyst?.rubric
           })
           .then(response => {
+            logger.info('NavigatorAgent produced response (pre-middleware)', {
+              sessionId,
+              responseType: (response as any)?.type
+            });
             agentFeedback.navigator = response;
           })
           .catch(error => {
+            const raw = (error as any)?.rawResponse ? JSON.stringify((error as any).rawResponse) : undefined;
             logger.error('Navigator agent failed', {
               sessionId,
-              error: error instanceof Error ? error.message : String(error)
+              error: error instanceof Error ? error.message : String(error),
+              raw
             });
+            agentFeedback.navigator = {
+              error: `Navigator failed: ${error instanceof Error ? error.message : String(error)}`,
+              raw
+            };
           })
       );
+    } else {
+      logger.info('Skipping NavigatorAgent: feedforward toggle disabled', { sessionId });
     }
+
 
     // Wait for all agent responses
     await Promise.all(agentPromises);
