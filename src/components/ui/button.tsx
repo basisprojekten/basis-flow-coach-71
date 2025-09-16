@@ -15,6 +15,19 @@ const buttonVariants = cva(
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
+        // Agent-specific variants
+        navigator: "bg-navigator text-navigator-foreground hover:bg-navigator/90 shadow-navigator",
+        analyst: "bg-analyst text-analyst-foreground hover:bg-analyst/90 shadow-analyst",
+        reviewer: "bg-reviewer text-reviewer-foreground hover:bg-reviewer/90 shadow-reviewer",
+        // Learning state variants
+        success: "bg-success text-success-foreground hover:bg-success/90",
+        warning: "bg-warning text-warning-foreground hover:bg-warning/90",
+        info: "bg-info text-info-foreground hover:bg-info/90",
+        // Gradient variants
+        "gradient-primary": "bg-gradient-primary text-primary-foreground hover:opacity-90",
+        "gradient-navigator": "bg-gradient-navigator text-navigator-foreground hover:opacity-90",
+        "gradient-analyst": "bg-gradient-analyst text-analyst-foreground hover:opacity-90",
+        "gradient-reviewer": "bg-gradient-reviewer text-reviewer-foreground hover:opacity-90",
       },
       size: {
         default: "h-10 px-4 py-2",

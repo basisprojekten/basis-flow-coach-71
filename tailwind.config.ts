@@ -47,6 +47,38 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // Agent-specific colors
+        navigator: {
+          DEFAULT: "hsl(var(--navigator))",
+          light: "hsl(var(--navigator-light))",
+          foreground: "hsl(var(--navigator-foreground))",
+        },
+        analyst: {
+          DEFAULT: "hsl(var(--analyst))",
+          light: "hsl(var(--analyst-light))",
+          foreground: "hsl(var(--analyst-foreground))",
+        },
+        reviewer: {
+          DEFAULT: "hsl(var(--reviewer))",
+          light: "hsl(var(--reviewer-light))",
+          foreground: "hsl(var(--reviewer-foreground))",
+        },
+        // Learning states
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          light: "hsl(var(--success-light))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          light: "hsl(var(--warning-light))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          light: "hsl(var(--info-light))",
+          foreground: "hsl(var(--info-foreground))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -57,6 +89,25 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+      },
+      backgroundImage: {
+        'gradient-primary': 'var(--gradient-primary)',
+        'gradient-navigator': 'var(--gradient-navigator)',
+        'gradient-analyst': 'var(--gradient-analyst)',
+        'gradient-reviewer': 'var(--gradient-reviewer)',
+      },
+      boxShadow: {
+        'sm': 'var(--shadow-sm)',
+        'md': 'var(--shadow-md)',
+        'lg': 'var(--shadow-lg)',
+        'xl': 'var(--shadow-xl)',
+        'navigator': 'var(--shadow-navigator)',
+        'analyst': 'var(--shadow-analyst)',
+        'reviewer': 'var(--shadow-reviewer)',
+      },
+      transitionTimingFunction: {
+        'smooth': 'var(--transition-smooth)',
+        'spring': 'var(--transition-spring)',
       },
       borderRadius: {
         lg: "var(--radius)",
