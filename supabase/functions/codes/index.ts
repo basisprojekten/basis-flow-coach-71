@@ -12,7 +12,7 @@ console.log("📍 Function URL: https://ammawhrjbwqmwhsbdjoa.supabase.co/functio
 console.log("✅ CORS enabled for all origins");
 console.log("🔧 Ready to handle requests");
 
-// Initialize Supabase client
+// Initialize Supabase client with service role key to bypass RLS
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -27,6 +27,7 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (req.method !== "POST") {
+    console.log(`❌ Method ${req.method} not allowed`);
     return new Response(
       JSON.stringify({ 
         error: "METHOD_NOT_ALLOWED", 
@@ -40,9 +41,13 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { action } = await req.json();
+    const body = await req.json();
+    console.log(`📋 Request body:`, body);
+    
+    const { action } = body;
     
     if (action !== "list") {
+      console.log(`❌ Invalid action: ${action}`);
       return new Response(
         JSON.stringify({ 
           error: "INVALID_ACTION", 
@@ -54,45 +59,98 @@ serve(async (req: Request): Promise<Response> => {
         }
       );
     }
-    // Fetch all codes with their associated exercise/lesson details
-    const { data: codes, error } = await supabase
+
+    // First, fetch all codes from the codes table
+    console.log("🔍 Fetching codes from database...");
+    const { data: codes, error: codesError } = await supabase
       .from('codes')
-      .select(`
-        id,
-        type,
-        target_id,
-        created_at,
-        exercises!codes_target_id_fkey(title, focus_hint),
-        lessons!codes_target_id_fkey(title, objectives)
-      `)
+      .select('id, type, target_id, created_at')
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error("❌ Error fetching codes:", error);
-      throw new Error(`Failed to fetch codes: ${error.message}`);
+    if (codesError) {
+      console.error("❌ Error fetching codes:", codesError);
+      throw new Error(`Failed to fetch codes: ${codesError.message}`);
     }
 
-    // Format the response to include exercise/lesson details
-    const formattedCodes = codes?.map(code => {
-      const isExercise = code.type === 'exercise';
-      const details = isExercise ? code.exercises : code.lessons;
-      
-      return {
-        id: code.id,
-        type: code.type,
-        target_id: code.target_id,
-        created_at: code.created_at,
-        title: details?.title || 'Unknown',
-        details: isExercise 
-          ? { focus_hint: details?.focus_hint }
-          : { objectives: details?.objectives || [] }
-      };
-    }) || [];
+    console.log(`📊 Found ${codes?.length || 0} codes in database`);
 
-    console.log(`✅ Retrieved ${formattedCodes.length} codes`);
+    if (!codes || codes.length === 0) {
+      console.log("✅ No codes found, returning empty array");
+      return new Response(
+        JSON.stringify([]),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders
+          }
+        }
+      );
+    }
+
+    // Now enrich each code with exercise/lesson details using separate queries
+    const enrichedCodes = await Promise.all(
+      codes.map(async (code) => {
+        try {
+          let title = 'Unknown';
+          let details = {};
+
+          if (code.type === 'exercise') {
+            console.log(`🔍 Fetching exercise details for ${code.target_id}`);
+            const { data: exercise, error: exerciseError } = await supabase
+              .from('exercises')
+              .select('title, focus_hint')
+              .eq('id', code.target_id)
+              .maybeSingle();
+
+            if (exerciseError) {
+              console.error(`⚠️ Error fetching exercise ${code.target_id}:`, exerciseError);
+            } else if (exercise) {
+              title = exercise.title || 'Unknown';
+              details = { focus_hint: exercise.focus_hint };
+            }
+          } else if (code.type === 'lesson') {
+            console.log(`🔍 Fetching lesson details for ${code.target_id}`);
+            const { data: lesson, error: lessonError } = await supabase
+              .from('lessons')
+              .select('title, objectives')
+              .eq('id', code.target_id)
+              .maybeSingle();
+
+            if (lessonError) {
+              console.error(`⚠️ Error fetching lesson ${code.target_id}:`, lessonError);
+            } else if (lesson) {
+              title = lesson.title || 'Unknown';
+              details = { objectives: lesson.objectives || [] };
+            }
+          }
+
+          return {
+            id: code.id,
+            type: code.type,
+            target_id: code.target_id,
+            created_at: code.created_at,
+            title,
+            details
+          };
+        } catch (error) {
+          console.error(`⚠️ Error enriching code ${code.id}:`, error);
+          // Return safe fallback values
+          return {
+            id: code.id,
+            type: code.type,
+            target_id: code.target_id,
+            created_at: code.created_at,
+            title: 'Unknown',
+            details: code.type === 'exercise' ? { focus_hint: null } : { objectives: [] }
+          };
+        }
+      })
+    );
+
+    console.log(`✅ Successfully enriched ${enrichedCodes.length} codes`);
 
     return new Response(
-      JSON.stringify(formattedCodes),
+      JSON.stringify(enrichedCodes),
       {
         headers: {
           "Content-Type": "application/json",
