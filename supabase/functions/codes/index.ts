@@ -4,7 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 console.log("🚀 CODES EDGE FUNCTION DEPLOYED SUCCESSFULLY");
@@ -26,11 +26,11 @@ serve(async (req: Request): Promise<Response> => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  if (req.method !== "GET") {
+  if (req.method !== "POST") {
     return new Response(
       JSON.stringify({ 
         error: "METHOD_NOT_ALLOWED", 
-        message: "Only GET method is supported" 
+        message: "Only POST method is supported" 
       }),
       { 
         status: 405,
@@ -40,6 +40,20 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   try {
+    const { action } = await req.json();
+    
+    if (action !== "list") {
+      return new Response(
+        JSON.stringify({ 
+          error: "INVALID_ACTION", 
+          message: "Only 'list' action is supported" 
+        }),
+        { 
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        }
+      );
+    }
     // Fetch all codes with their associated exercise/lesson details
     const { data: codes, error } = await supabase
       .from('codes')

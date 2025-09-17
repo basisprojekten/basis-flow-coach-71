@@ -390,7 +390,7 @@ export const systemApi = {
 export const codeApi = {
   list: async () => {
     try {
-      return await supabaseApiRequest<any[]>('codes');
+      return await supabaseApiRequest<any[]>('codes', { action: 'list' });
     } catch (error) {
       console.error('Failed to fetch codes:', error);
       throw error;
