@@ -91,9 +91,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
         console.log('Lesson created successfully:', { id: lessonCode, title });
 
+        // Generate and store code  
+        const displayCode = 'LS-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+        
+        const { error: codeError } = await supabase
+          .from('codes')
+          .insert({
+            id: displayCode,
+            type: 'lesson',
+            target_id: lessonCode
+          });
+
+        if (codeError) {
+          console.error('Error creating lesson code:', codeError);
+          return jsonResponse({
+            error: "DATABASE_ERROR",
+            message: "Failed to create lesson code",
+            details: codeError
+          }, 500);
+        }
+
+        console.log('Lesson code created successfully:', displayCode);
+
         return jsonResponse({
           id: lessonCode,
-          code: lessonCode,
+          code: displayCode,
           lesson: lesson
         });
       }

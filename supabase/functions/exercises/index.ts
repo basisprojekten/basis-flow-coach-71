@@ -94,10 +94,28 @@ serve(async (req: Request): Promise<Response> => {
 
     console.log("✅ Exercise created successfully:", insertedExercise);
 
+    // Generate and store code
+    const exerciseCode = 'EX-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+    
+    const { error: codeError } = await supabase
+      .from('codes')
+      .insert({
+        id: exerciseCode,
+        type: 'exercise',
+        target_id: exerciseId
+      });
+
+    if (codeError) {
+      console.error("❌ Code creation failed:", codeError);
+      throw new Error(`Failed to create exercise code: ${codeError.message}`);
+    }
+
+    console.log("✅ Exercise code created:", exerciseCode);
+
     // Prepare response in exact format expected by frontend
     const response = {
       id: exerciseId,
-      code: exerciseId,
+      code: exerciseCode,
       exercise: insertedExercise
     };
 

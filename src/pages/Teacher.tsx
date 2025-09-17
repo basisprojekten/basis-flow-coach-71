@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
-import { exerciseApi, lessonApi } from '@/lib/api';
+import { exerciseApi, lessonApi, codeApi } from '@/lib/api';
 import { 
   ArrowLeft,
   Plus,
@@ -50,10 +50,7 @@ const Teacher = () => {
     exerciseOrder: []
   });
 
-  const [generatedCodes, setGeneratedCodes] = useState({
-    exerciseCode: '',
-    lessonCode: ''
-  });
+  const [generatedCodes, setGeneratedCodes] = useState<any[]>([]);
 
   const handleCreateExercise = async () => {
     try {
@@ -76,8 +73,8 @@ const Teacher = () => {
         protocolStack: exerciseForm.protocolStack
       });
 
-      // Update generated codes
-      setGeneratedCodes(prev => ({ ...prev, exerciseCode: result.code }));
+      // Refresh codes list
+      fetchCodes();
       
       // Show success message
       toast({
@@ -115,8 +112,8 @@ const Teacher = () => {
         exerciseOrder: lessonForm.exerciseOrder
       });
 
-      // Update generated codes
-      setGeneratedCodes(prev => ({ ...prev, lessonCode: result.code }));
+      // Refresh codes list
+      fetchCodes();
       
       // Show success message
       toast({
@@ -134,6 +131,25 @@ const Teacher = () => {
       });
     }
   };
+
+  const fetchCodes = async () => {
+    try {
+      const codes = await codeApi.list();
+      setGeneratedCodes(codes);
+    } catch (error) {
+      console.error('Failed to fetch codes:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch generated codes",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Fetch codes on component mount
+  React.useEffect(() => {
+    fetchCodes();
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -437,67 +453,81 @@ const Teacher = () => {
 
           {/* Generated Codes */}
           <TabsContent value="codes" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Target className="h-5 w-5 text-primary" />
-                    Exercise Codes
-                  </CardTitle>
-                  <CardDescription>
-                    Share these codes with students to access specific exercises.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {generatedCodes.exerciseCode ? (
-                    <div className="space-y-4">
-                      <div className="p-4 bg-muted rounded-lg">
-                        <div className="font-mono text-lg font-bold text-center">
-                          {generatedCodes.exerciseCode}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Code className="h-5 w-5 text-primary" />
+                  Generated Codes
+                </CardTitle>
+                <CardDescription>
+                  Access codes for created exercises and lessons. Share with students.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {generatedCodes.length > 0 ? (
+                  <div className="space-y-4">
+                    {generatedCodes.map((code) => (
+                      <div key={code.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            {code.type === 'exercise' ? (
+                              <Target className="h-4 w-4 text-primary" />
+                            ) : (
+                              <BookOpen className="h-4 w-4 text-primary" />
+                            )}
+                            <span className="font-semibold">{code.title}</span>
+                            <Badge variant={code.type === 'exercise' ? 'default' : 'secondary'}>
+                              {code.type}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            Created: {new Date(code.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-mono text-lg font-bold text-primary">
+                            {code.id}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Share this code
+                          </p>
                         </div>
                       </div>
-                      <p className="text-sm text-muted-foreground text-center">
-                        Students can use this code to access the exercise directly.
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground text-center py-8">
-                      No exercise codes generated yet.
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No codes generated yet</h3>
+                    <p className="text-muted-foreground mb-4">
+                      Create exercises or lessons to generate access codes for students.
                     </p>
-                  )}
-                </CardContent>
-              </Card>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BookOpen className="h-5 w-5 text-primary" />
-                    Lesson Codes
-                  </CardTitle>
-                  <CardDescription>
-                    Share these codes with students to access complete lessons.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {generatedCodes.lessonCode ? (
-                    <div className="space-y-4">
-                      <div className="p-4 bg-muted rounded-lg">
-                        <div className="font-mono text-lg font-bold text-center">
-                          {generatedCodes.lessonCode}
-                        </div>
-                      </div>
-                      <p className="text-sm text-muted-foreground text-center">
-                        Students can use this code to access the complete lesson sequence.
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground text-center py-8">
-                      No lesson codes generated yet.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  Instructions for Students
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
+                    <h4 className="font-semibold mb-2">How students use codes:</h4>
+                    <ol className="list-decimal list-inside space-y-1 text-sm">
+                      <li>Go to the student portal</li>
+                      <li>Enter the provided code</li>
+                      <li>Complete the training exercise or lesson</li>
+                      <li>Receive feedback and progress tracking</li>
+                    </ol>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>

@@ -386,6 +386,18 @@ export const systemApi = {
   },
 };
 
+// Add other API endpoints as needed
+export const codeApi = {
+  list: async () => {
+    try {
+      return await supabaseApiRequest<any[]>('codes');
+    } catch (error) {
+      console.error('Failed to fetch codes:', error);
+      throw error;
+    }
+  }
+};
+
 // WebSocket connection for real-time features (future implementation)
 export class BasisWebSocket {
   private ws: WebSocket | null = null;

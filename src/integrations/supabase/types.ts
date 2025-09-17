@@ -38,6 +38,27 @@ export type Database = {
         }
         Relationships: []
       }
+      codes: {
+        Row: {
+          created_at: string
+          id: string
+          target_id: string
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          target_id: string
+          type: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          target_id?: string
+          type?: string
+        }
+        Relationships: []
+      }
       exercises: {
         Row: {
           case_id: string
