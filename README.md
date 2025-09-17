@@ -1,5 +1,5 @@
 # BASIS Training Platform
-
+klockan är bara barnet
 Advanced conversation technique training with AI-powered agents for feedforward guidance, iterative analysis, and comprehensive review.
 
 ## Project Overview
