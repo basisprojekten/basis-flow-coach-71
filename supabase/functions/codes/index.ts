@@ -64,7 +64,7 @@ serve(async (req: Request): Promise<Response> => {
     console.log("🔍 Fetching codes from database...");
     const { data: codes, error: codesError } = await supabase
       .from('codes')
-      .select('id, type, target_id, created_at')
+      .select('id, type, lesson_id, exercise_id, created_at')
       .order('created_at', { ascending: false });
 
     if (codesError) {
@@ -90,34 +90,36 @@ serve(async (req: Request): Promise<Response> => {
     // Now enrich each code with exercise/lesson details using separate queries
     const enrichedCodes = await Promise.all(
       codes.map(async (code) => {
+        const targetId = code.type === 'exercise' ? code.exercise_id : code.lesson_id;
+
         try {
           let title = 'Unknown';
-          let details = {};
+          let details: Record<string, unknown> = {};
 
           if (code.type === 'exercise') {
-            console.log(`🔍 Fetching exercise details for ${code.target_id}`);
+            console.log(`🔍 Fetching exercise details for ${targetId}`);
             const { data: exercise, error: exerciseError } = await supabase
               .from('exercises')
               .select('title, focus_hint')
-              .eq('id', code.target_id)
+              .eq('id', targetId)
               .maybeSingle();
 
             if (exerciseError) {
-              console.error(`⚠️ Error fetching exercise ${code.target_id}:`, exerciseError);
+              console.error(`⚠️ Error fetching exercise ${targetId}:`, exerciseError);
             } else if (exercise) {
               title = exercise.title || 'Unknown';
               details = { focus_hint: exercise.focus_hint };
             }
           } else if (code.type === 'lesson') {
-            console.log(`🔍 Fetching lesson details for ${code.target_id}`);
+            console.log(`🔍 Fetching lesson details for ${targetId}`);
             const { data: lesson, error: lessonError } = await supabase
               .from('lessons')
               .select('title, objectives')
-              .eq('id', code.target_id)
+              .eq('id', targetId)
               .maybeSingle();
 
             if (lessonError) {
-              console.error(`⚠️ Error fetching lesson ${code.target_id}:`, lessonError);
+              console.error(`⚠️ Error fetching lesson ${targetId}:`, lessonError);
             } else if (lesson) {
               title = lesson.title || 'Unknown';
               details = { objectives: lesson.objectives || [] };
@@ -127,7 +129,9 @@ serve(async (req: Request): Promise<Response> => {
           return {
             id: code.id,
             type: code.type,
-            target_id: code.target_id,
+            target_id: targetId,
+            lesson_id: code.lesson_id,
+            exercise_id: code.exercise_id,
             created_at: code.created_at,
             title,
             details
@@ -138,7 +142,9 @@ serve(async (req: Request): Promise<Response> => {
           return {
             id: code.id,
             type: code.type,
-            target_id: code.target_id,
+            target_id: targetId,
+            lesson_id: code.lesson_id,
+            exercise_id: code.exercise_id,
             created_at: code.created_at,
             title: 'Unknown',
             details: code.type === 'exercise' ? { focus_hint: null } : { objectives: [] }

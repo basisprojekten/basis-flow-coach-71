@@ -66,10 +66,11 @@ class SessionManager {
     lessonCode?: string;
   }): Promise<SessionState> {
     const sessionId = nanoid(12);
-    
-    // Get exercise configuration from database
-    let exerciseConfig: ExerciseConfig;
-    
+
+    const providedExerciseCode = config.exerciseCode?.trim();
+    const displayExerciseCode = providedExerciseCode || undefined;
+    let resolvedExerciseId: string | null = null;
+
     // Define demo exercise configuration for fallback
     const demoExerciseConfig: ExerciseConfig = {
       id: 'demo-001',
@@ -84,23 +85,50 @@ class SessionManager {
       focusHint: 'Practice maintaining professional boundaries while showing empathy',
       protocols: ['basis-v1']
     };
-    
-    if (config.exerciseCode) {
+
+    let exerciseConfig: ExerciseConfig = demoExerciseConfig;
+
+    if (providedExerciseCode) {
       try {
-        logger.info('Attempting to fetch exercise from Supabase', { exerciseCode: config.exerciseCode });
+        logger.info('Attempting to resolve exercise from Supabase', { exerciseCode: providedExerciseCode });
+
+        let targetExerciseId = providedExerciseCode;
+        const { data: codeRecord, error: codeLookupError } = await supabase
+          .from('codes')
+          .select('exercise_id')
+          .eq('type', 'exercise')
+          .eq('id', providedExerciseCode)
+          .maybeSingle();
+
+        if (codeLookupError) {
+          logger.warn('Failed to lookup exercise code mapping, will attempt direct exercise lookup', {
+            exerciseCode: providedExerciseCode,
+            error: codeLookupError.message
+          });
+        }
+
+        if (codeRecord?.exercise_id) {
+          targetExerciseId = codeRecord.exercise_id;
+          logger.info('Resolved exercise join code to internal exercise id', {
+            exerciseCode: providedExerciseCode,
+            exerciseId: targetExerciseId
+          });
+        }
+
         const { data: exercise, error } = await supabase
           .from('exercises')
           .select('*')
-          .eq('id', config.exerciseCode)
+          .eq('id', targetExerciseId)
           .maybeSingle();
-          
+
         if (error || !exercise) {
-          logger.warn('Exercise not found or query error, falling back to demo configuration', { 
-            exerciseCode: config.exerciseCode, 
-            error: error?.message 
+          logger.warn('Exercise not found or query error, falling back to demo configuration', {
+            exerciseCode: providedExerciseCode,
+            targetExerciseId,
+            error: error?.message
           });
-          exerciseConfig = demoExerciseConfig;
         } else {
+          resolvedExerciseId = exercise.id;
           exerciseConfig = {
             id: exercise.id,
             title: exercise.title,
@@ -111,16 +139,13 @@ class SessionManager {
           };
         }
       } catch (err) {
-        logger.warn('Failed to fetch exercise, falling back to demo configuration', { 
-          exerciseCode: config.exerciseCode, 
-          error: err 
+        logger.warn('Failed to fetch exercise, falling back to demo configuration', {
+          exerciseCode: providedExerciseCode,
+          error: err instanceof Error ? err.message : String(err)
         });
-        exerciseConfig = demoExerciseConfig;
       }
-    } else {
-      // Use demo configuration when no exercise code provided
-      exerciseConfig = demoExerciseConfig;
     }
+
     logger.info('Using exercise configuration', { id: exerciseConfig.id, title: exerciseConfig.title });
     const initialMessage: ConversationMessage = {
       id: nanoid(8),
@@ -134,14 +159,18 @@ class SessionManager {
       conversationHistory: [initialMessage],
       currentExerciseIndex: 0,
       protocols: exerciseConfig.protocols,
-      config: exerciseConfig
+      config: exerciseConfig,
+      metadata: {
+        exerciseCode: displayExerciseCode ?? resolvedExerciseId ?? null,
+        lessonCode: config.lessonCode ?? null
+      }
     };
 
     // Build and log insert payloads
     const payloadForLog = {
       id: 'DB_GENERATED_UUID',
       mode: config.mode,
-      exercise_id: config.exerciseCode,
+      exercise_id: resolvedExerciseId,
       lesson_id: config.lessonCode,
       state: sessionState,
       started_at: new Date().toISOString(),
@@ -151,7 +180,7 @@ class SessionManager {
 
     const insertPayload = {
       mode: config.mode,
-      exercise_id: config.exerciseCode,
+      exercise_id: resolvedExerciseId,
       lesson_id: config.lessonCode,
       state: sessionState,
       started_at: payloadForLog.started_at,
@@ -178,7 +207,7 @@ class SessionManager {
 
     const session: SessionState = {
       id: dbSession.id,
-      exerciseId: config.exerciseCode,
+      exerciseId: resolvedExerciseId ?? undefined,
       lessonId: config.lessonCode,
       mode: config.mode,
       currentExerciseIndex: sessionState.currentExerciseIndex,
@@ -188,7 +217,7 @@ class SessionManager {
       metadata: {
         startedAt: new Date(dbSession.started_at),
         lastActivityAt: new Date(dbSession.last_activity_at),
-        exerciseCode: config.exerciseCode,
+        exerciseCode: displayExerciseCode ?? resolvedExerciseId ?? undefined,
         lessonCode: config.lessonCode
       }
     };
@@ -196,7 +225,8 @@ class SessionManager {
     logger.info('Session created', {
       sessionId,
       mode: config.mode,
-      exerciseCode: config.exerciseCode,
+      exerciseCode: displayExerciseCode ?? null,
+      exerciseId: resolvedExerciseId,
       lessonCode: config.lessonCode
     });
 
@@ -228,7 +258,8 @@ class SessionManager {
     }
 
     const state = dbSession.state as any;
-    
+    const storedMetadata = state?.metadata || {};
+
     const session: SessionState = {
       id: dbSession.id,
       exerciseId: dbSession.exercise_id,
@@ -248,8 +279,8 @@ class SessionManager {
       metadata: {
         startedAt: new Date(dbSession.started_at),
         lastActivityAt: new Date(dbSession.last_activity_at),
-        exerciseCode: dbSession.exercise_id,
-        lessonCode: dbSession.lesson_id
+        exerciseCode: storedMetadata.exerciseCode ?? dbSession.exercise_id,
+        lessonCode: storedMetadata.lessonCode ?? dbSession.lesson_id
       }
     };
 
@@ -280,7 +311,11 @@ class SessionManager {
       conversationHistory: session.conversationHistory,
       currentExerciseIndex: session.currentExerciseIndex,
       protocols: session.protocols,
-      config: session.config
+      config: session.config,
+      metadata: {
+        exerciseCode: session.metadata.exerciseCode,
+        lessonCode: session.metadata.lessonCode
+      }
     };
 
     const { error } = await supabase
@@ -324,7 +359,11 @@ class SessionManager {
       conversationHistory: session.conversationHistory,
       currentExerciseIndex: session.currentExerciseIndex,
       protocols: session.protocols,
-      config: session.config
+      config: session.config,
+      metadata: {
+        exerciseCode: session.metadata.exerciseCode,
+        lessonCode: session.metadata.lessonCode
+      }
     };
 
     const { error } = await supabase

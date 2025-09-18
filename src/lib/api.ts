@@ -2,6 +2,7 @@
 // Handles all communication with the backend services
 
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import {
   Exercise,
   Lesson,
@@ -131,7 +132,12 @@ async function apiRequest<T>(
 // Exercise API
 export const exerciseApi = {
   // Create a new exercise
-  async create(exercise: CreateExerciseRequest): Promise<{ id: string; code: string }> {
+  async create(exercise: CreateExerciseRequest): Promise<{
+    id: string;
+    code: string;
+    exercise: Database['public']['Tables']['exercises']['Row'];
+    accessCode?: Database['public']['Tables']['codes']['Row'];
+  }> {
     if (isUsingSupabaseFunctions) {
       return supabaseApiRequest('exercises', {
         action: 'create',
@@ -187,7 +193,12 @@ export const exerciseApi = {
 // Lesson API
 export const lessonApi = {
   // Create a new lesson
-  async create(lesson: CreateLessonRequest): Promise<{ id: string; code: string }> {
+  async create(lesson: CreateLessonRequest): Promise<{
+    id: string;
+    code: string;
+    lesson: Database['public']['Tables']['lessons']['Row'];
+    accessCode?: Database['public']['Tables']['codes']['Row'];
+  }> {
     if (isUsingSupabaseFunctions) {
       return supabaseApiRequest('lessons', {
         action: 'create',

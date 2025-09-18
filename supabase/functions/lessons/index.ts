@@ -94,13 +94,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
         // Generate and store code  
         const displayCode = 'LS-' + Math.random().toString(36).substr(2, 6).toUpperCase();
         
-        const { error: codeError } = await supabase
+        const { data: lessonCodeRow, error: codeError } = await supabase
           .from('codes')
           .insert({
             id: displayCode,
             type: 'lesson',
-            target_id: lessonCode
-          });
+            lesson_id: lessonCode,
+          })
+          .select()
+          .single();
 
         if (codeError) {
           console.error('Error creating lesson code:', codeError);
@@ -111,12 +113,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
           }, 500);
         }
 
-        console.log('Lesson code created successfully:', displayCode);
+        console.log('Lesson code created successfully:', lessonCodeRow);
 
         return jsonResponse({
           id: lessonCode,
-          code: displayCode,
-          lesson: lesson
+          code: lessonCodeRow?.id ?? displayCode,
+          lesson,
+          accessCode: lessonCodeRow,
         });
       }
 

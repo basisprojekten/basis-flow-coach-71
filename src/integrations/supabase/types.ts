@@ -42,19 +42,22 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          target_id: string
+          lesson_id: string | null
+          exercise_id: string | null
           type: string
         }
         Insert: {
           created_at?: string
           id: string
-          target_id: string
+          lesson_id?: string | null
+          exercise_id?: string | null
           type: string
         }
         Update: {
           created_at?: string
           id?: string
-          target_id?: string
+          lesson_id?: string | null
+          exercise_id?: string | null
           type?: string
         }
         Relationships: []

@@ -1,5 +1,26 @@
+// Supabase Edge Function: exercises
+// Handles exercise creation, retrieval, and listing for BASIS teacher workflows
+
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+
+type ExerciseToggles = Record<string, unknown>;
+
+interface ExerciseCasePayload {
+  role: string;
+  background: string;
+  goals?: string | null;
+}
+
+interface ExercisesRequestBody {
+  action: 'create' | 'list' | 'get';
+  title?: string;
+  protocolStack?: string[];
+  case?: ExerciseCasePayload;
+  toggles?: ExerciseToggles;
+  focusHint?: string;
+  exerciseId?: string;
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,154 +28,291 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-console.log("🚀 EXERCISES EDGE FUNCTION DEPLOYED SUCCESSFULLY");
-console.log("📍 Function URL: https://ammawhrjbwqmwhsbdjoa.supabase.co/functions/v1/exercises");
-console.log("✅ CORS enabled for all origins");
-console.log("🔧 Ready to handle requests");
+function jsonResponse(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    headers: { "Content-Type": "application/json", ...corsHeaders },
+    status,
+  });
+}
 
-// Initialize Supabase client
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const supabase = createClient(
+  Deno.env.get('SUPABASE_URL') ?? '',
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+);
 
-// Generate unique ID
-function generateId(): string {
-  return 'ex_' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+function generateExerciseId(): string {
+  return `ex_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`;
+}
+
+function generateDisplayCode(prefix: string): string {
+  return `${prefix}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+}
+
+async function insertCase(caseData: ExerciseCasePayload) {
+  const caseId = `case_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`;
+  const { data, error } = await supabase
+    .from('cases')
+    .insert({
+      id: caseId,
+      role: caseData.role,
+      background: caseData.background,
+      goals: caseData.goals || null
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('❌ Case insertion failed:', error);
+    throw new Error(`Failed to create case: ${error.message}`);
+  }
+
+  return { caseId, record: data };
+}
+
+async function insertExercise(payload: {
+  id: string;
+  title: string;
+  caseId: string;
+  protocolStack?: string[];
+  toggles?: ExerciseToggles;
+  focusHint?: string;
+}) {
+  const { data, error } = await supabase
+    .from('exercises')
+    .insert({
+      id: payload.id,
+      title: payload.title,
+      case_id: payload.caseId,
+      protocols: payload.protocolStack ?? [],
+      toggles: payload.toggles ?? {},
+      focus_hint: payload.focusHint ?? null
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('❌ Exercise insertion failed:', error);
+    throw new Error(`Failed to create exercise: ${error.message}`);
+  }
+
+  return data;
+}
+
+async function upsertExerciseCode(exerciseId: string) {
+  const displayCode = generateDisplayCode('EX');
+  const { data, error } = await supabase
+    .from('codes')
+    .insert({
+      id: displayCode,
+      type: 'exercise',
+      exercise_id: exerciseId
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('❌ Exercise code creation failed:', error);
+    throw new Error(`Failed to create exercise code: ${error.message}`);
+  }
+
+  return data;
+}
+
+async function fetchExerciseWithCode(exerciseId: string) {
+  const { data: exercise, error: exerciseError } = await supabase
+    .from('exercises')
+    .select('*')
+    .eq('id', exerciseId)
+    .maybeSingle();
+
+  if (exerciseError) {
+    throw new Error(`Failed to fetch exercise: ${exerciseError.message}`);
+  }
+
+  if (!exercise) {
+    return null;
+  }
+
+  const { data: code } = await supabase
+    .from('codes')
+    .select('id')
+    .eq('type', 'exercise')
+    .eq('exercise_id', exercise.id)
+    .maybeSingle();
+
+  return {
+    id: exercise.id,
+    code: code?.id ?? null,
+    exercise
+  };
+}
+
+async function handleCreate(body: ExercisesRequestBody) {
+  const { title, protocolStack, case: caseData, toggles, focusHint } = body;
+
+  if (!title || !caseData?.role || !caseData?.background) {
+    return jsonResponse({
+      error: 'MISSING_REQUIRED_FIELDS',
+      message: 'title, case.role, and case.background are required'
+    }, 400);
+  }
+
+  const exerciseId = generateExerciseId();
+
+  const { caseId } = await insertCase(caseData);
+  const exerciseRecord = await insertExercise({
+    id: exerciseId,
+    title,
+    caseId,
+    protocolStack,
+    toggles,
+    focusHint
+  });
+  const accessCode = await upsertExerciseCode(exerciseId);
+
+  return jsonResponse({
+    id: exerciseRecord.id,
+    code: accessCode.id,
+    exercise: exerciseRecord,
+    accessCode
+  });
+}
+
+async function handleList() {
+  const { data: exercises, error } = await supabase
+    .from('exercises')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('❌ Failed to list exercises:', error);
+    return jsonResponse({
+      error: 'DATABASE_ERROR',
+      message: 'Unable to list exercises'
+    }, 500);
+  }
+
+  if (!exercises || exercises.length === 0) {
+    return jsonResponse([]);
+  }
+
+  const { data: codes, error: codeError } = await supabase
+    .from('codes')
+    .select('id, exercise_id')
+    .eq('type', 'exercise');
+
+  if (codeError) {
+    console.warn('⚠️ Failed to fetch exercise codes:', codeError);
+  }
+
+  const codeMap = new Map<string, string>();
+  for (const code of codes ?? []) {
+    if (code.exercise_id) {
+      codeMap.set(code.exercise_id, code.id);
+    }
+  }
+
+  const payload = exercises.map((exercise) => ({
+    id: exercise.id,
+    code: codeMap.get(exercise.id) ?? null,
+    exercise
+  }));
+
+  return jsonResponse(payload);
+}
+
+async function handleGet(body: ExercisesRequestBody) {
+  const { exerciseId } = body;
+
+  if (!exerciseId) {
+    return jsonResponse({
+      error: 'MISSING_EXERCISE_ID',
+      message: 'exerciseId is required'
+    }, 400);
+  }
+
+  let targetId = exerciseId;
+  let directLookup = await fetchExerciseWithCode(targetId);
+
+  if (!directLookup) {
+    const { data: codeRecord, error: codeLookupError } = await supabase
+      .from('codes')
+      .select('exercise_id, id')
+      .eq('type', 'exercise')
+      .eq('id', exerciseId)
+      .maybeSingle();
+
+    if (codeLookupError) {
+      console.error('❌ Failed to resolve exercise by code:', codeLookupError);
+      return jsonResponse({
+        error: 'INVALID_EXERCISE_CODE',
+        message: 'Unable to resolve exercise from provided code'
+      }, 400);
+    }
+
+    if (!codeRecord?.exercise_id) {
+      return jsonResponse({
+        error: 'EXERCISE_NOT_FOUND',
+        message: 'Exercise not found for provided identifier'
+      }, 404);
+    }
+
+    targetId = codeRecord.exercise_id;
+    directLookup = await fetchExerciseWithCode(targetId);
+  }
+
+  if (!directLookup) {
+    return jsonResponse({
+      error: 'EXERCISE_NOT_FOUND',
+      message: 'Exercise not found'
+    }, 404);
+  }
+
+  return jsonResponse(directLookup);
 }
 
 serve(async (req: Request): Promise<Response> => {
-  console.log(`📥 ${req.method} request received at ${new Date().toISOString()}`);
-  
-  // Handle CORS preflight
-  if (req.method === "OPTIONS") {
-    console.log("🔄 CORS preflight request handled");
-    return new Response("ok", { headers: corsHeaders });
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  if (req.method !== 'POST') {
+    return jsonResponse({
+      error: 'METHOD_NOT_ALLOWED',
+      message: 'Only POST method is supported'
+    }, 405);
   }
 
   try {
-    // Parse request body
-    const body = await req.json();
-    console.log("📝 Request body:", body);
+    const body = await req.json() as ExercisesRequestBody;
+    const { action } = body;
 
-    // Extract exercise data
-    const { title, protocolStack, case: caseData, toggles, focusHint, action } = body;
+    console.log(`📥 Exercises function invoked with action: ${action}`);
 
-    if (action !== 'create') {
-      throw new Error(`Unsupported action: ${action}`);
+    switch (action) {
+      case 'create':
+        return await handleCreate(body);
+      case 'list':
+        return await handleList();
+      case 'get':
+        return await handleGet(body);
+      default:
+        return jsonResponse({
+          error: 'INVALID_ACTION',
+          message: `Unsupported action: ${action}`
+        }, 400);
     }
-
-    // Validate required fields
-    if (!title || !caseData?.role || !caseData?.background) {
-      throw new Error('Missing required fields: title, case.role, case.background');
-    }
-
-    // Generate unique IDs
-    const caseId = 'case_' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
-    const exerciseId = generateId();
-
-    console.log(`🆔 Generated IDs - Case: ${caseId}, Exercise: ${exerciseId}`);
-
-    // Create case first
-    const { data: insertedCase, error: caseError } = await supabase
-      .from('cases')
-      .insert({
-        id: caseId,
-        role: caseData.role,
-        background: caseData.background,
-        goals: caseData.goals || null
-      })
-      .select()
-      .single();
-
-    if (caseError) {
-      console.error("❌ Case insertion failed:", caseError);
-      throw new Error(`Failed to create case: ${caseError.message}`);
-    }
-
-    console.log("✅ Case created successfully:", insertedCase);
-
-    // Create exercise
-    const { data: insertedExercise, error: exerciseError } = await supabase
-      .from('exercises')
-      .insert({
-        id: exerciseId,
-        title,
-        case_id: caseId,
-        protocols: protocolStack || [],
-        toggles: toggles || {},
-        focus_hint: focusHint || null
-      })
-      .select()
-      .single();
-
-    if (exerciseError) {
-      console.error("❌ Exercise insertion failed:", exerciseError);
-      throw new Error(`Failed to create exercise: ${exerciseError.message}`);
-    }
-
-    console.log("✅ Exercise created successfully:", insertedExercise);
-
-    // Generate and store code
-    const exerciseCode = 'EX-' + Math.random().toString(36).substr(2, 6).toUpperCase();
-    
-    const { error: codeError } = await supabase
-      .from('codes')
-      .insert({
-        id: exerciseCode,
-        type: 'exercise',
-        target_id: exerciseId
-      });
-
-    if (codeError) {
-      console.error("❌ Code creation failed:", codeError);
-      throw new Error(`Failed to create exercise code: ${codeError.message}`);
-    }
-
-    console.log("✅ Exercise code created:", exerciseCode);
-
-    // Prepare response in exact format expected by frontend
-    const response = {
-      id: exerciseId,
-      code: exerciseCode,
-      exercise: insertedExercise
-    };
-
-    // Sanity check for missing id or code
-    if (!response.id || !response.code) {
-      console.error("❌ MISSING_ID_OR_CODE_IN_RESPONSE - Response:", response);
-      throw new Error("MISSING_ID_OR_CODE_IN_RESPONSE");
-    }
-
-    console.log("📤 Returning response:", response);
-
-    return new Response(
-      JSON.stringify(response),
-      {
-        headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders
-        }
-      }
-    );
-
   } catch (error) {
-    console.error("❌ Error in exercises function:", error);
-    
-    const errorResponse = {
-      error: true,
-      message: error instanceof Error ? error.message : 'Unknown error occurred',
-      timestamp: new Date().toISOString()
-    };
-
-    return new Response(
-      JSON.stringify(errorResponse),
-      {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders
-        }
-      }
-    );
+    console.error('❌ Unexpected error in exercises function:', error);
+    return jsonResponse({
+      error: 'INTERNAL_ERROR',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
   }
 });

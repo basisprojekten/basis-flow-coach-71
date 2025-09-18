@@ -34,10 +34,8 @@ site_url = "http://127.0.0.1:3000"
 additional_redirect_urls = ["https://ammawhrjbwqmwhsbdjoa.supabase.co"]
 jwt_expiry = 3600
 enable_signup = true
-enable_confirmations = false
 
 [functions]
-verify_jwt = false
 
 [functions.session]
 verify_jwt = false
@@ -46,6 +44,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.health]
+verify_jwt = false
+
+[functions.codes]
 verify_jwt = false
 
 [functions.lessons]

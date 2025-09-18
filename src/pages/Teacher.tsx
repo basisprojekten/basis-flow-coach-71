@@ -74,7 +74,7 @@ const Teacher = () => {
       });
 
       // Refresh codes list
-      fetchCodes();
+      await fetchCodes();
       
       // Show success message
       toast({
@@ -113,7 +113,7 @@ const Teacher = () => {
       });
 
       // Refresh codes list
-      fetchCodes();
+      await fetchCodes();
       
       // Show success message
       toast({
