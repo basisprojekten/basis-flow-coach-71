@@ -12,6 +12,15 @@ import { supabaseClient } from '../services/supabaseClient';
 
 const router = express.Router();
 
+// Health check endpoint (no auth required for testing)
+router.get('/health', (req, res) => {
+  res.json({ 
+    ok: true, 
+    route: 'upload',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Multer error handler middleware
 const handleMulterError = (error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (error instanceof multer.MulterError) {

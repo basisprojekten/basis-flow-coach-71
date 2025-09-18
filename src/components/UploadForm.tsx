@@ -10,6 +10,26 @@ import { useToast } from '@/hooks/use-toast';
 import { Upload, FileText, X, Check, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+
+// Robust response parser that handles non-JSON responses
+const parseResponse = async (res: Response) => {
+  const contentType = res.headers.get('content-type') || '';
+  
+  if (contentType.includes('application/json')) {
+    try {
+      return await res.json();
+    } catch (error) {
+      throw new Error(`JSON parse error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+  
+  const text = await res.text();
+  throw new Error(
+    `Expected JSON but got: ${contentType}. Status: ${res.status}. Body (first 200): ${text.slice(0, 200)}`
+  );
+};
+
 interface UploadedFile {
   file: File;
   preview: string;
@@ -150,17 +170,12 @@ const UploadForm = () => {
       if (activeTab === 'case') {
         formData.append('title', caseForm.title);
         
-        const response = await fetch('/api/upload/case', {
+        const response = await fetch(`${API_BASE_URL}/upload/case`, {
           method: 'POST',
           body: formData,
         });
 
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || 'Upload failed');
-        }
-
-        const result = await response.json();
+        const result = await parseResponse(response);
         
         toast({
           title: "Upload Successful",
@@ -179,17 +194,12 @@ const UploadForm = () => {
           formData.append('version', protocolForm.version);
         }
         
-        const response = await fetch('/api/upload/protocol', {
+        const response = await fetch(`${API_BASE_URL}/upload/protocol`, {
           method: 'POST',
           body: formData,
         });
 
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || 'Upload failed');
-        }
-
-        const result = await response.json();
+        const result = await parseResponse(response);
         
         toast({
           title: "Upload Successful",
