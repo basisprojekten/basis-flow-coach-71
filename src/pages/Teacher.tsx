@@ -23,6 +23,7 @@ import {
   Code,
   Eye
 } from 'lucide-react';
+import UploadForm from '@/components/UploadForm';
 
 const Teacher = () => {
   const navigate = useNavigate();
@@ -182,7 +183,7 @@ const Teacher = () => {
 
       <div className="container mx-auto px-6 py-8">
         <Tabs defaultValue="exercises" className="space-y-8">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="exercises" className="flex items-center gap-2">
               <Target className="h-4 w-4" />
               Exercises
@@ -190,6 +191,10 @@ const Teacher = () => {
             <TabsTrigger value="lessons" className="flex items-center gap-2">
               <BookOpen className="h-4 w-4" />
               Lessons
+            </TabsTrigger>
+            <TabsTrigger value="upload" className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Upload Documents
             </TabsTrigger>
             <TabsTrigger value="codes" className="flex items-center gap-2">
               <Code className="h-4 w-4" />
@@ -449,6 +454,11 @@ const Teacher = () => {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Document Upload */}
+          <TabsContent value="upload" className="space-y-6">
+            <UploadForm />
           </TabsContent>
 
           {/* Generated Codes */}
