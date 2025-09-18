@@ -108,34 +108,54 @@ async function createSession(config: {
   };
   
   if (config.exerciseCode) {
-    console.log('Attempting to fetch exercise from Supabase', { exerciseCode: config.exerciseCode });
+    console.log('Attempting to resolve exercise code and fetch exercise from Supabase', { exerciseCode: config.exerciseCode });
     try {
-      const { data: exercise, error } = await supabase
-        .from('exercises')
-        .select('*')
+      // First, resolve the exercise code to get the target_id
+      const { data: codeRecord, error: codeError } = await supabase
+        .from('codes')
+        .select('target_id')
+        .eq('type', 'exercise')
         .eq('id', config.exerciseCode)
         .maybeSingle();
       
-      console.log('Exercise fetch result', { hasError: !!error, found: !!exercise });
+      console.log('Code resolution result', { hasError: !!codeError, found: !!codeRecord, targetId: codeRecord?.target_id });
       
-      if (error || !exercise) {
-        console.warn('Exercise not found or query error. Falling back to demo exercise.', {
+      if (codeError || !codeRecord?.target_id) {
+        console.warn('Exercise code not found or query error. Falling back to demo exercise.', {
           exerciseCode: config.exerciseCode,
-          error: error?.message
+          error: codeError?.message
         });
         exerciseConfig = demoExerciseConfig;
       } else {
-        exerciseConfig = {
-          id: exercise.id,
-          title: exercise.title,
-          caseId: exercise.case_id,
-          toggles: exercise.toggles as any,
-          focusHint: exercise.focus_hint || '',
-          protocols: exercise.protocols as string[]
-        };
+        // Now fetch the actual exercise using the target_id
+        const { data: exercise, error: exerciseError } = await supabase
+          .from('exercises')
+          .select('*')
+          .eq('id', codeRecord.target_id)
+          .maybeSingle();
+        
+        console.log('Exercise fetch result', { hasError: !!exerciseError, found: !!exercise, exerciseId: codeRecord.target_id });
+        
+        if (exerciseError || !exercise) {
+          console.warn('Exercise not found for target_id. Falling back to demo exercise.', {
+            exerciseCode: config.exerciseCode,
+            targetId: codeRecord.target_id,
+            error: exerciseError?.message
+          });
+          exerciseConfig = demoExerciseConfig;
+        } else {
+          exerciseConfig = {
+            id: exercise.id,
+            title: exercise.title,
+            caseId: exercise.case_id,
+            toggles: exercise.toggles as any,
+            focusHint: exercise.focus_hint || '',
+            protocols: exercise.protocols as string[]
+          };
+        }
       }
     } catch (err) {
-      console.warn('Unexpected error during exercise fetch. Falling back to demo exercise.', {
+      console.warn('Unexpected error during exercise resolution. Falling back to demo exercise.', {
         exerciseCode: config.exerciseCode,
         error: String(err)
       });
