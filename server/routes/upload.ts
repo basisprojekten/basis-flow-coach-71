@@ -4,7 +4,7 @@
 
 import express from 'express';
 import multer from 'multer';
-import * as docx from 'docx';
+import * as mammoth from 'mammoth';
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../config/logger';
@@ -13,44 +13,46 @@ import { supabaseClient } from '../services/supabaseClient';
 const router = express.Router();
 
 /**
- * Parse a .docx file and extract text content
+ * Parse a .docx file and extract text content using Mammoth
  */
 async function parseDocx(filePath: string): Promise<string> {
   try {
-    const buffer = await fs.readFile(filePath);
-    const AdmZip = require('adm-zip');
-    const zip = new AdmZip(buffer);
+    logger.info('Starting Mammoth text extraction', { filePath });
     
-    // Extract document.xml from the docx file
-    const documentXml = zip.readAsText('word/document.xml');
+    // Use Mammoth to extract text from .docx file
+    const result = await mammoth.extractRawText({ path: filePath });
     
-    if (!documentXml) {
-      throw new Error('Could not extract document.xml from docx file');
-    }
-    
-    // Extract text content using regex to find w:t tags
-    const textMatches = documentXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [];
-    const textContent = textMatches
-      .map(match => {
-        // Extract content between w:t tags
-        const content = match.replace(/<w:t[^>]*>/, '').replace(/<\/w:t>/, '');
-        return content;
-      })
-      .join(' ')
-      .replace(/\s+/g, ' ') // Normalize whitespace
-      .trim();
-    
-    if (!textContent) {
+    if (!result.value || !result.value.trim()) {
       throw new Error('No text content found in document');
     }
     
-    return textContent;
-  } catch (error) {
-    logger.error('Failed to parse docx file', {
+    // Log any messages from Mammoth (warnings about unsupported elements)
+    if (result.messages && result.messages.length > 0) {
+      logger.info('Mammoth parsing messages', {
+        filePath,
+        messages: result.messages.map(msg => ({ type: msg.type, message: msg.message }))
+      });
+    }
+    
+    const extractedText = result.value.trim();
+    
+    logger.info('Mammoth extraction completed successfully', {
       filePath,
-      error: error instanceof Error ? error.message : String(error)
+      textLength: extractedText.length,
+      messageCount: result.messages?.length || 0
     });
-    throw new Error(`Failed to parse docx file: ${error instanceof Error ? error.message : String(error)}`);
+    
+    return extractedText;
+    
+  } catch (error) {
+    logger.error('Mammoth parsing failed', {
+      filePath,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    
+    // Re-throw with a clear error message for the API handler
+    throw new Error(`Failed to parse .docx document: ${error instanceof Error ? error.message : 'Unknown parsing error'}`);
   }
 }
 
