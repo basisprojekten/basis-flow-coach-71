@@ -103,9 +103,46 @@ router.post('/case', upload.single('file'), handleMulterError, async (req, res) 
       fileSize: file.size
     });
 
-    // Extract text from .docx file using mammoth
-    const result = await mammoth.extractRawText({ path: tempFilePath });
-    const rawText = result.value;
+    // Extract text from .docx file using mammoth with error handling
+    let rawText: string;
+    try {
+      logger.info('Starting mammoth text extraction', {
+        title,
+        filename: file.originalname,
+        filePath: tempFilePath
+      });
+      
+      const result = await mammoth.extractRawText({ path: tempFilePath });
+      rawText = result.value;
+      
+      logger.info('Mammoth extraction completed', {
+        title,
+        filename: file.originalname,
+        textLength: rawText.length,
+        hasWarnings: result.messages.length > 0
+      });
+
+      if (result.messages.length > 0) {
+        logger.warn('Mammoth extraction warnings', {
+          title,
+          filename: file.originalname,
+          messages: result.messages
+        });
+      }
+
+    } catch (mammothError) {
+      logger.error('Mammoth parsing failed', {
+        title,
+        filename: file.originalname,
+        error: mammothError instanceof Error ? mammothError.message : String(mammothError),
+        stack: mammothError instanceof Error ? mammothError.stack : undefined
+      });
+      
+      return res.status(400).json({
+        error: 'DOCX_PARSE_ERROR',
+        message: `Failed to parse .docx document: ${mammothError instanceof Error ? mammothError.message : 'Unknown parsing error'}`
+      });
+    }
 
     if (!rawText.trim()) {
       return res.status(400).json({
@@ -244,9 +281,54 @@ router.post('/protocol', upload.single('file'), handleMulterError, async (req, r
       fileSize: file.size
     });
 
-    // Extract text from .docx file using mammoth
-    const result = await mammoth.extractRawText({ path: tempFilePath });
-    const rawText = result.value;
+    // Extract text from .docx file using mammoth with error handling
+    let rawText: string;
+    try {
+      logger.info('Starting mammoth text extraction', {
+        name,
+        type,
+        version,
+        filename: file.originalname,
+        filePath: tempFilePath
+      });
+      
+      const result = await mammoth.extractRawText({ path: tempFilePath });
+      rawText = result.value;
+      
+      logger.info('Mammoth extraction completed', {
+        name,
+        type,
+        version,
+        filename: file.originalname,
+        textLength: rawText.length,
+        hasWarnings: result.messages.length > 0
+      });
+
+      if (result.messages.length > 0) {
+        logger.warn('Mammoth extraction warnings', {
+          name,
+          type,
+          version,
+          filename: file.originalname,
+          messages: result.messages
+        });
+      }
+
+    } catch (mammothError) {
+      logger.error('Mammoth parsing failed', {
+        name,
+        type,
+        version,
+        filename: file.originalname,
+        error: mammothError instanceof Error ? mammothError.message : String(mammothError),
+        stack: mammothError instanceof Error ? mammothError.stack : undefined
+      });
+      
+      return res.status(400).json({
+        error: 'DOCX_PARSE_ERROR',
+        message: `Failed to parse .docx document: ${mammothError instanceof Error ? mammothError.message : 'Unknown parsing error'}`
+      });
+    }
 
     if (!rawText.trim()) {
       return res.status(400).json({
