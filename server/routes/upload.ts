@@ -12,6 +12,38 @@ import { supabaseClient } from '../services/supabaseClient';
 
 const router = express.Router();
 
+// Multer error handler middleware
+const handleMulterError = (error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (error instanceof multer.MulterError) {
+    logger.error('Multer error during upload', {
+      error: error.message,
+      code: error.code,
+      field: error.field
+    });
+    
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        error: 'FILE_TOO_LARGE',
+        message: 'File size exceeds 10MB limit'
+      });
+    }
+    
+    return res.status(400).json({
+      error: 'UPLOAD_ERROR', 
+      message: `File upload error: ${error.message}`
+    });
+  }
+  
+  if (error.message === 'Only .docx files are allowed') {
+    return res.status(400).json({
+      error: 'INVALID_FILE_TYPE',
+      message: 'Only .docx files are allowed'
+    });
+  }
+  
+  next(error);
+};
+
 // Configure multer for file uploads
 const upload = multer({
   dest: 'uploads/', // Temporary storage
@@ -32,7 +64,7 @@ const upload = multer({
  * POST /api/upload/case
  * Upload a .docx file and create a case record
  */
-router.post('/case', upload.single('file'), async (req, res) => {
+router.post('/case', upload.single('file'), handleMulterError, async (req, res) => {
   let tempFilePath: string | null = null;
   
   try {
@@ -109,7 +141,8 @@ router.post('/case', upload.single('file'), async (req, res) => {
   } catch (error) {
     logger.error('Error processing case upload', {
       error: error instanceof Error ? error.message : String(error),
-      title: req.body?.title
+      title: req.body?.title,
+      filename: req.file?.originalname || 'unknown'
     });
 
     if (error instanceof multer.MulterError) {
@@ -119,11 +152,16 @@ router.post('/case', upload.single('file'), async (req, res) => {
           message: 'File size exceeds 10MB limit'
         });
       }
+      // Handle other multer errors
+      return res.status(400).json({
+        error: 'MULTER_ERROR',
+        message: `File upload error: ${error.message}`
+      });
     }
 
-    res.status(500).json({
+    return res.status(500).json({
       error: 'UPLOAD_ERROR',
-      message: 'An error occurred while processing the upload'
+      message: 'An unexpected error occurred during upload'
     });
 
   } finally {
@@ -146,7 +184,7 @@ router.post('/case', upload.single('file'), async (req, res) => {
  * POST /api/upload/protocol
  * Upload a .docx file and create a protocol record
  */
-router.post('/protocol', upload.single('file'), async (req, res) => {
+router.post('/protocol', upload.single('file'), handleMulterError, async (req, res) => {
   let tempFilePath: string | null = null;
   
   try {
@@ -239,7 +277,8 @@ router.post('/protocol', upload.single('file'), async (req, res) => {
     logger.error('Error processing protocol upload', {
       error: error instanceof Error ? error.message : String(error),
       name: req.body?.name,
-      type: req.body?.type
+      type: req.body?.type,
+      filename: req.file?.originalname || 'unknown'
     });
 
     if (error instanceof multer.MulterError) {
@@ -249,11 +288,16 @@ router.post('/protocol', upload.single('file'), async (req, res) => {
           message: 'File size exceeds 10MB limit'
         });
       }
+      // Handle other multer errors
+      return res.status(400).json({
+        error: 'MULTER_ERROR',
+        message: `File upload error: ${error.message}`
+      });
     }
 
-    res.status(500).json({
+    return res.status(500).json({
       error: 'UPLOAD_ERROR',
-      message: 'An error occurred while processing the upload'
+      message: 'An unexpected error occurred during upload'
     });
 
   } finally {
