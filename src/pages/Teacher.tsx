@@ -8,9 +8,11 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
-import { exerciseApi, lessonApi, codeApi } from '@/lib/api';
+import { exerciseApi, lessonApi, codeApi, caseApi, protocolApi } from '@/lib/api';
 import { 
   ArrowLeft,
   Plus,
@@ -21,7 +23,8 @@ import {
   Users,
   FileText,
   Code,
-  Eye
+  Eye,
+  ChevronDown
 } from 'lucide-react';
 import UploadForm from '@/components/UploadForm';
 
@@ -31,19 +34,22 @@ const Teacher = () => {
   const [exerciseForm, setExerciseForm] = useState({
     title: '',
     focusHint: '',
-    protocolStack: ['BASIS'],
+    caseId: '',
+    baseProtocolId: '',
+    supplementProtocolIds: [] as string[],
     toggles: {
       feedforward: true,
       iterative: true,
       mode: 'text' as 'text' | 'voice' | 'transcript',
       skipRoleplayForGlobalFeedback: false
-    },
-    case: {
-      role: '',
-      background: '',
-      goals: ''
     }
   });
+
+  const [cases, setCases] = useState<Array<{ id: string; title: string; raw_text: string }>>([]);
+  const [protocols, setProtocols] = useState<Array<{ id: string; name: string; version: string; type: string; raw_text: string }>>([]);
+  const [selectedCase, setSelectedCase] = useState<{ id: string; title: string; raw_text: string } | null>(null);
+  const [selectedBaseProtocol, setSelectedBaseProtocol] = useState<{ id: string; name: string; type: string; raw_text: string } | null>(null);
+  const [selectedSupplementProtocols, setSelectedSupplementProtocols] = useState<Array<{ id: string; name: string; type: string; raw_text: string }>>([]);
 
   const [lessonForm, setLessonForm] = useState({
     title: '',
@@ -56,10 +62,10 @@ const Teacher = () => {
   const handleCreateExercise = async () => {
     try {
       // Validate required fields
-      if (!exerciseForm.title || !exerciseForm.focusHint || !exerciseForm.case.role || !exerciseForm.case.background || !exerciseForm.case.goals) {
+      if (!exerciseForm.title || !exerciseForm.caseId || !exerciseForm.baseProtocolId) {
         toast({
           title: "Validation Error",
-          description: "Please fill in all required fields",
+          description: "Please fill in title, select a case, and select a base protocol",
           variant: "destructive"
         });
         return;
@@ -69,9 +75,10 @@ const Teacher = () => {
       const result = await exerciseApi.create({
         title: exerciseForm.title,
         focusHint: exerciseForm.focusHint,
-        case: exerciseForm.case,
-        toggles: exerciseForm.toggles,
-        protocolStack: exerciseForm.protocolStack
+        caseId: exerciseForm.caseId,
+        baseProtocolId: exerciseForm.baseProtocolId,
+        supplementProtocolIds: exerciseForm.supplementProtocolIds,
+        toggles: exerciseForm.toggles
       });
 
       // Refresh codes list
@@ -147,10 +154,47 @@ const Teacher = () => {
     }
   };
 
-  // Fetch codes on component mount
+  // Fetch data on component mount
   React.useEffect(() => {
-    fetchCodes();
+    const fetchData = async () => {
+      try {
+        const [casesData, protocolsData, codesData] = await Promise.all([
+          caseApi.list(),
+          protocolApi.list(),
+          codeApi.list()
+        ]);
+        setCases(casesData);
+        setProtocols(protocolsData);
+        setGeneratedCodes(codesData);
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load cases and protocols",
+          variant: "destructive"
+        });
+      }
+    };
+    fetchData();
   }, []);
+
+  // Update selected case when caseId changes
+  React.useEffect(() => {
+    const case_ = cases.find(c => c.id === exerciseForm.caseId);
+    setSelectedCase(case_ || null);
+  }, [exerciseForm.caseId, cases]);
+
+  // Update selected base protocol when baseProtocolId changes
+  React.useEffect(() => {
+    const protocol = protocols.find(p => p.id === exerciseForm.baseProtocolId);
+    setSelectedBaseProtocol(protocol || null);
+  }, [exerciseForm.baseProtocolId, protocols]);
+
+  // Update selected supplement protocols when supplementProtocolIds changes
+  React.useEffect(() => {
+    const supplementProtocols = protocols.filter(p => exerciseForm.supplementProtocolIds.includes(p.id));
+    setSelectedSupplementProtocols(supplementProtocols);
+  }, [exerciseForm.supplementProtocolIds, protocols]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -218,7 +262,7 @@ const Teacher = () => {
                 {/* Basic Information */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="exercise-title">Exercise Title</Label>
+                    <Label htmlFor="exercise-title">Exercise Title *</Label>
                     <Input
                       id="exercise-title"
                       value={exerciseForm.title}
@@ -237,48 +281,117 @@ const Teacher = () => {
                   </div>
                 </div>
 
-                {/* Case Study */}
+                {/* Case Selection */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Case Study Configuration</h3>
-                  <div className="grid grid-cols-1 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="case-role">Case Role</Label>
-                      <Input
-                        id="case-role"
-                        value={exerciseForm.case.role}
-                        onChange={(e) => setExerciseForm(prev => ({ 
-                          ...prev, 
-                          case: { ...prev.case, role: e.target.value }
-                        }))}
-                        placeholder="e.g., Concerned Parent"
-                      />
+                  <h3 className="text-lg font-semibold">Case Selection</h3>
+                  <div className="space-y-2">
+                    <Label htmlFor="case-select">Case *</Label>
+                    <Select
+                      value={exerciseForm.caseId}
+                      onValueChange={(value) => setExerciseForm(prev => ({ ...prev, caseId: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a case scenario" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {cases.map((case_) => (
+                          <SelectItem key={case_.id} value={case_.id}>
+                            {case_.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedCase && (
+                      <div className="mt-2 p-3 bg-muted/30 rounded-lg">
+                        <h4 className="font-medium text-sm">{selectedCase.title}</h4>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-3">
+                          {selectedCase.raw_text.substring(0, 200)}...
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Protocol Selection */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Protocol Configuration</h3>
+                  
+                  {/* Base Protocol */}
+                  <div className="space-y-2">
+                    <Label htmlFor="base-protocol">Base Protocol *</Label>
+                    <Select
+                      value={exerciseForm.baseProtocolId}
+                      onValueChange={(value) => setExerciseForm(prev => ({ ...prev, baseProtocolId: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select base protocol" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {protocols.filter(p => p.type === 'base').map((protocol) => (
+                          <SelectItem key={protocol.id} value={protocol.id}>
+                            {protocol.name} {protocol.version && `(${protocol.version})`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedBaseProtocol && (
+                      <div className="mt-2 p-3 bg-muted/30 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">{selectedBaseProtocol.type}</Badge>
+                          <h4 className="font-medium text-sm">{selectedBaseProtocol.name}</h4>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                          {selectedBaseProtocol.raw_text.substring(0, 150)}...
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Supplement Protocols */}
+                  <div className="space-y-2">
+                    <Label>Supplement Protocols (Optional)</Label>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {protocols.filter(p => p.type === 'content' || p.type === 'process').map((protocol) => (
+                        <div key={protocol.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`supplement-${protocol.id}`}
+                            checked={exerciseForm.supplementProtocolIds.includes(protocol.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setExerciseForm(prev => ({
+                                  ...prev,
+                                  supplementProtocolIds: [...prev.supplementProtocolIds, protocol.id]
+                                }));
+                              } else {
+                                setExerciseForm(prev => ({
+                                  ...prev,
+                                  supplementProtocolIds: prev.supplementProtocolIds.filter(id => id !== protocol.id)
+                                }));
+                              }
+                            }}
+                          />
+                          <Label htmlFor={`supplement-${protocol.id}`} className="text-sm font-medium">
+                            {protocol.name} 
+                            <Badge variant="secondary" className="ml-2 text-xs">{protocol.type}</Badge>
+                          </Label>
+                        </div>
+                      ))}
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="case-background">Background</Label>
-                      <Textarea
-                        id="case-background"
-                        value={exerciseForm.case.background}
-                        onChange={(e) => setExerciseForm(prev => ({ 
-                          ...prev, 
-                          case: { ...prev.case, background: e.target.value }
-                        }))}
-                        placeholder="Provide context and scenario details..."
-                        rows={3}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="case-goals">Goals</Label>
-                      <Textarea
-                        id="case-goals"
-                        value={exerciseForm.case.goals}
-                        onChange={(e) => setExerciseForm(prev => ({ 
-                          ...prev, 
-                          case: { ...prev.case, goals: e.target.value }
-                        }))}
-                        placeholder="What should the student achieve in this conversation?"
-                        rows={2}
-                      />
-                    </div>
+                    {selectedSupplementProtocols.length > 0 && (
+                      <div className="mt-2 space-y-2">
+                        {selectedSupplementProtocols.map((protocol) => (
+                          <div key={protocol.id} className="p-2 bg-muted/20 rounded-md">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline">{protocol.type}</Badge>
+                              <span className="font-medium text-sm">{protocol.name}</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                              {protocol.raw_text.substring(0, 100)}...
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 

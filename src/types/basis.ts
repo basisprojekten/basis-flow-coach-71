@@ -125,10 +125,16 @@ export interface AgentResponseSet {
 
 export interface CreateExerciseRequest {
   title: string;
-  protocolStack: string[];
-  case: Omit<Case, 'id'>;
-  toggles: ExerciseToggles;
-  focusHint: string;
+  focusHint?: string;
+  caseId: string;
+  baseProtocolId: string;
+  supplementProtocolIds?: string[];
+  toggles?: {
+    feedforward?: boolean;
+    iterative?: boolean;
+    mode?: 'text' | 'voice' | 'transcript';
+    skipRoleplayForGlobalFeedback?: boolean;
+  };
 }
 
 export interface CreateLessonRequest {
