@@ -6,6 +6,7 @@ import { BaseAgent, AgentContext } from './baseAgent';
 import { NavigatorResponse } from '../schemas/agentSchemas';
 import { logger } from '../config/logger';
 import { nanoid } from 'nanoid';
+import { getNavigatorPrompt } from '../prompts/navigator';
 
 export class NavigatorAgent extends BaseAgent {
   constructor() {
@@ -25,14 +26,16 @@ export class NavigatorAgent extends BaseAgent {
       willCallOpenAI: true
     });
 
-    // Enhance context with adaptive focus based on exercise type
+    // Enhanced context for Navigator with custom prompt injection
+    const navigatorPrompt = getNavigatorPrompt(context.exerciseConfig);
+    
     const navigatorContext: AgentContext = {
       ...context,
       conversationHistory: [
         ...context.conversationHistory,
         {
           role: 'system',
-          content: this.buildAdaptiveFocusPrompt(context)
+          content: navigatorPrompt
         }
       ]
     };
@@ -63,47 +66,6 @@ export class NavigatorAgent extends BaseAgent {
     }
 
     return response as NavigatorResponse;
-  }
-
-  /**
-   * Build adaptive focus prompt based on exercise type and protocols
-   */
-  private buildAdaptiveFocusPrompt(context: AgentContext): string {
-    const protocols = context.protocols || [];
-    const exerciseConfig = context.exerciseConfig;
-    
-    let focusPrompt = `CASE-KONTEXT: ${exerciseConfig?.caseBackground || 'Generisk träningssituation'}
-STUDENTENS ROLL: Träna samtalsteknik i denna specifika situation.
-
-PROTOKOLL-FOKUS: `;
-
-    // Detect exercise type and adapt focus
-    const hasBBIC = protocols.some(p => p.id?.includes('bbic') || p.name?.toLowerCase().includes('bbic'));
-    const hasProcessProtocol = protocols.some(p => p.id?.includes('process') || p.name?.toLowerCase().includes('process'));
-    
-    if (hasBBIC) {
-      focusPrompt += `Övningen använder BBIC-tillägg - fokusera på att täcka alla obligatoriska delar:
-- R-delen (relationsbyggande: R1-R5)
-- A-delen (analys och utforskning: A1-C3) 
-- Avslutsdelen (summering och framåtblick)
-Guida studenten att systematiskt arbeta genom dessa delar utan att missa viktiga moment.`;
-    } else if (hasProcessProtocol) {
-      focusPrompt += `Övningen använder processtillägg - fokusera på att öva specifika beteenden:
-- Kvalitativ parafrasering
-- Klargörande frågor
-- Empatiuttryck
-- Strukturering av samtalet
-Hjälp studenten att utveckla dessa specifika färdigheter genom repetition och förfining.`;
-    } else {
-      focusPrompt += `Övningen använder basprotokoll - fokusera på grundläggande samtalsförmågor:
-- Lyssning och förståelse
-- Respektfullt bemötande  
-- Tydlig kommunikation
-- Strukturerat samtalsledande
-Guida studenten att bygga solid grund i dessa kärnfärdigheter.`;
-    }
-
-    return focusPrompt;
   }
 
   /**
