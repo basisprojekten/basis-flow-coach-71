@@ -16,25 +16,25 @@ export type Database = {
     Tables: {
       cases: {
         Row: {
-          background: string
           created_at: string
-          goals: string | null
           id: string
-          role: string
+          raw_text: string
+          structured_json: Json | null
+          title: string
         }
         Insert: {
-          background: string
           created_at?: string
-          goals?: string | null
-          id: string
-          role: string
+          id?: string
+          raw_text: string
+          structured_json?: Json | null
+          title: string
         }
         Update: {
-          background?: string
           created_at?: string
-          goals?: string | null
           id?: string
-          role?: string
+          raw_text?: string
+          structured_json?: Json | null
+          title?: string
         }
         Relationships: []
       }
@@ -42,22 +42,19 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          lesson_id: string | null
-          exercise_id: string | null
+          target_id: string
           type: string
         }
         Insert: {
           created_at?: string
           id: string
-          lesson_id?: string | null
-          exercise_id?: string | null
+          target_id: string
           type: string
         }
         Update: {
           created_at?: string
           id?: string
-          lesson_id?: string | null
-          exercise_id?: string | null
+          target_id?: string
           type?: string
         }
         Relationships: []
@@ -116,6 +113,36 @@ export type Database = {
         }
         Relationships: []
       }
+      protocols: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          raw_text: string
+          structured_json: Json | null
+          type: Database["public"]["Enums"]["protocol_type"]
+          version: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          raw_text: string
+          structured_json?: Json | null
+          type: Database["public"]["Enums"]["protocol_type"]
+          version?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          raw_text?: string
+          structured_json?: Json | null
+          type?: Database["public"]["Enums"]["protocol_type"]
+          version?: string | null
+        }
+        Relationships: []
+      }
       sessions: {
         Row: {
           exercise_id: string | null
@@ -157,7 +184,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      protocol_type: "base" | "content" | "process"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -284,6 +311,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      protocol_type: ["base", "content", "process"],
+    },
   },
 } as const
