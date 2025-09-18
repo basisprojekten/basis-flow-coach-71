@@ -13,6 +13,7 @@ import { validateApiKey } from './middleware/validateApiKey';
 import { sessionRoutes } from './routes/session';
 import { transcriptRoutes } from './routes/transcript';
 import { healthRoutes } from './routes/health';
+import { uploadRoutes } from './routes/upload';
 
 // Load environment variables
 dotenv.config();
@@ -51,6 +52,7 @@ app.use('/api', validateApiKey);
 // Routes
 app.use('/api/session', sessionRoutes);
 app.use('/api/transcript', transcriptRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -62,7 +64,8 @@ app.get('/', (req, res) => {
     endpoints: {
       health: '/api/health',
       session: '/api/session',
-      transcript: '/api/transcript'
+      transcript: '/api/transcript',
+      upload: '/api/upload'
     }
   });
 });
@@ -76,7 +79,9 @@ app.use('*', (req, res) => {
       'GET /api/health',
       'POST /api/session',
       'POST /api/session/:id/input',
-      'POST /api/transcript/review'
+      'POST /api/transcript/review',
+      'POST /api/upload/case',
+      'POST /api/upload/protocol'
     ]
   });
 });
