@@ -4,13 +4,55 @@
 
 import express from 'express';
 import multer from 'multer';
-import mammoth from 'mammoth';
+import * as docx from 'docx';
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../config/logger';
 import { supabaseClient } from '../services/supabaseClient';
 
 const router = express.Router();
+
+/**
+ * Parse a .docx file and extract text content
+ */
+async function parseDocx(filePath: string): Promise<string> {
+  try {
+    const buffer = await fs.readFile(filePath);
+    const AdmZip = require('adm-zip');
+    const zip = new AdmZip(buffer);
+    
+    // Extract document.xml from the docx file
+    const documentXml = zip.readAsText('word/document.xml');
+    
+    if (!documentXml) {
+      throw new Error('Could not extract document.xml from docx file');
+    }
+    
+    // Extract text content using regex to find w:t tags
+    const textMatches = documentXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [];
+    const textContent = textMatches
+      .map(match => {
+        // Extract content between w:t tags
+        const content = match.replace(/<w:t[^>]*>/, '').replace(/<\/w:t>/, '');
+        return content;
+      })
+      .join(' ')
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .trim();
+    
+    if (!textContent) {
+      throw new Error('No text content found in document');
+    }
+    
+    return textContent;
+  } catch (error) {
+    logger.error('Failed to parse docx file', {
+      filePath,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    throw new Error(`Failed to parse docx file: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
 
 // Health check endpoint (no auth required for testing)
 router.get('/health', (req, res) => {
@@ -103,44 +145,34 @@ router.post('/case', upload.single('file'), handleMulterError, async (req, res) 
       fileSize: file.size
     });
 
-    // Extract text from .docx file using mammoth with error handling
+    // Extract text from .docx file using robust docx parser
     let rawText: string;
     try {
-      logger.info('Starting mammoth text extraction', {
+      logger.info('Starting docx text extraction', {
         title,
         filename: file.originalname,
         filePath: tempFilePath
       });
       
-      const result = await mammoth.extractRawText({ path: tempFilePath });
-      rawText = result.value;
+      rawText = await parseDocx(tempFilePath);
       
-      logger.info('Mammoth extraction completed', {
+      logger.info('Docx extraction completed', {
         title,
         filename: file.originalname,
-        textLength: rawText.length,
-        hasWarnings: result.messages.length > 0
+        textLength: rawText.length
       });
 
-      if (result.messages.length > 0) {
-        logger.warn('Mammoth extraction warnings', {
-          title,
-          filename: file.originalname,
-          messages: result.messages
-        });
-      }
-
-    } catch (mammothError) {
-      logger.error('Mammoth parsing failed', {
+    } catch (docxError) {
+      logger.error('Docx parsing failed', {
         title,
         filename: file.originalname,
-        error: mammothError instanceof Error ? mammothError.message : String(mammothError),
-        stack: mammothError instanceof Error ? mammothError.stack : undefined
+        error: docxError instanceof Error ? docxError.message : String(docxError),
+        stack: docxError instanceof Error ? docxError.stack : undefined
       });
       
       return res.status(400).json({
         error: 'DOCX_PARSE_ERROR',
-        message: `Failed to parse .docx document: ${mammothError instanceof Error ? mammothError.message : 'Unknown parsing error'}`
+        message: `Failed to parse .docx document: ${docxError instanceof Error ? docxError.message : 'Unknown parsing error'}`
       });
     }
 
@@ -281,10 +313,10 @@ router.post('/protocol', upload.single('file'), handleMulterError, async (req, r
       fileSize: file.size
     });
 
-    // Extract text from .docx file using mammoth with error handling
+    // Extract text from .docx file using robust docx parser
     let rawText: string;
     try {
-      logger.info('Starting mammoth text extraction', {
+      logger.info('Starting docx text extraction', {
         name,
         type,
         version,
@@ -292,41 +324,29 @@ router.post('/protocol', upload.single('file'), handleMulterError, async (req, r
         filePath: tempFilePath
       });
       
-      const result = await mammoth.extractRawText({ path: tempFilePath });
-      rawText = result.value;
+      rawText = await parseDocx(tempFilePath);
       
-      logger.info('Mammoth extraction completed', {
+      logger.info('Docx extraction completed', {
         name,
         type,
         version,
         filename: file.originalname,
-        textLength: rawText.length,
-        hasWarnings: result.messages.length > 0
+        textLength: rawText.length
       });
 
-      if (result.messages.length > 0) {
-        logger.warn('Mammoth extraction warnings', {
-          name,
-          type,
-          version,
-          filename: file.originalname,
-          messages: result.messages
-        });
-      }
-
-    } catch (mammothError) {
-      logger.error('Mammoth parsing failed', {
+    } catch (docxError) {
+      logger.error('Docx parsing failed', {
         name,
         type,
         version,
         filename: file.originalname,
-        error: mammothError instanceof Error ? mammothError.message : String(mammothError),
-        stack: mammothError instanceof Error ? mammothError.stack : undefined
+        error: docxError instanceof Error ? docxError.message : String(docxError),
+        stack: docxError instanceof Error ? docxError.stack : undefined
       });
       
       return res.status(400).json({
         error: 'DOCX_PARSE_ERROR',
-        message: `Failed to parse .docx document: ${mammothError instanceof Error ? mammothError.message : 'Unknown parsing error'}`
+        message: `Failed to parse .docx document: ${docxError instanceof Error ? docxError.message : 'Unknown parsing error'}`
       });
     }
 
