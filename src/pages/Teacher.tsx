@@ -349,41 +349,59 @@ const Teacher = () => {
 
                   {/* Supplement Protocols */}
                   <div className="space-y-2">
-                    <Label>Supplement Protocols (Optional)</Label>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {protocols.filter(p => p.type === 'content' || p.type === 'process').map((protocol) => (
-                        <div key={protocol.id} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`supplement-${protocol.id}`}
-                            checked={exerciseForm.supplementProtocolIds.includes(protocol.id)}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                setExerciseForm(prev => ({
-                                  ...prev,
-                                  supplementProtocolIds: [...prev.supplementProtocolIds, protocol.id]
-                                }));
-                              } else {
-                                setExerciseForm(prev => ({
-                                  ...prev,
-                                  supplementProtocolIds: prev.supplementProtocolIds.filter(id => id !== protocol.id)
-                                }));
-                              }
-                            }}
-                          />
-                          <Label htmlFor={`supplement-${protocol.id}`} className="text-sm font-medium">
-                            {protocol.name} 
-                            <Badge variant="secondary" className="ml-2 text-xs">{protocol.type}</Badge>
-                          </Label>
-                        </div>
-                      ))}
-                    </div>
+                    <Label htmlFor="supplement-protocols">Supplement Protocols (Optional)</Label>
+                    <Select
+                      value=""
+                      onValueChange={(value) => {
+                        if (!exerciseForm.supplementProtocolIds.includes(value)) {
+                          setExerciseForm(prev => ({
+                            ...prev,
+                            supplementProtocolIds: [...prev.supplementProtocolIds, value]
+                          }));
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Add supplement protocols" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {protocols.filter(p => (p.type === 'content' || p.type === 'process') && 
+                          !exerciseForm.supplementProtocolIds.includes(p.id)).length === 0 ? (
+                          <SelectItem value="" disabled>No supplement protocols available</SelectItem>
+                        ) : (
+                          protocols.filter(p => (p.type === 'content' || p.type === 'process') && 
+                            !exerciseForm.supplementProtocolIds.includes(p.id)).map((protocol) => (
+                            <SelectItem key={protocol.id} value={protocol.id}>
+                              {protocol.name} ({protocol.type}) {protocol.version && `- ${protocol.version}`}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    
+                    {/* Selected supplement protocols */}
                     {selectedSupplementProtocols.length > 0 && (
                       <div className="mt-2 space-y-2">
+                        <Label className="text-sm font-medium">Selected Supplement Protocols:</Label>
                         {selectedSupplementProtocols.map((protocol) => (
                           <div key={protocol.id} className="p-2 bg-muted/20 rounded-md">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline">{protocol.type}</Badge>
-                              <span className="font-medium text-sm">{protocol.name}</span>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline">{protocol.type}</Badge>
+                                <span className="font-medium text-sm">{protocol.name}</span>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setExerciseForm(prev => ({
+                                    ...prev,
+                                    supplementProtocolIds: prev.supplementProtocolIds.filter(id => id !== protocol.id)
+                                  }));
+                                }}
+                              >
+                                Remove
+                              </Button>
                             </div>
                             <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
                               {protocol.raw_text.substring(0, 100)}...
