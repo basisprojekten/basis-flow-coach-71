@@ -111,7 +111,7 @@ async function upsertExerciseCode(exerciseId: string) {
     .insert({
       id: displayCode,
       type: 'exercise',
-      exercise_id: exerciseId
+      target_id: exerciseId
     })
     .select()
     .single();
@@ -143,7 +143,7 @@ async function fetchExerciseWithCode(exerciseId: string) {
     .from('codes')
     .select('id')
     .eq('type', 'exercise')
-    .eq('exercise_id', exercise.id)
+    .eq('target_id', exercise.id)
     .maybeSingle();
 
   return {
@@ -204,7 +204,7 @@ async function handleList() {
 
   const { data: codes, error: codeError } = await supabase
     .from('codes')
-    .select('id, exercise_id')
+    .select('id, target_id')
     .eq('type', 'exercise');
 
   if (codeError) {
@@ -213,8 +213,8 @@ async function handleList() {
 
   const codeMap = new Map<string, string>();
   for (const code of codes ?? []) {
-    if (code.exercise_id) {
-      codeMap.set(code.exercise_id, code.id);
+    if ((code as any).target_id) {
+      codeMap.set((code as any).target_id, (code as any).id);
     }
   }
 
@@ -243,7 +243,7 @@ async function handleGet(body: ExercisesRequestBody) {
   if (!directLookup) {
     const { data: codeRecord, error: codeLookupError } = await supabase
       .from('codes')
-      .select('exercise_id, id')
+      .select('target_id, id')
       .eq('type', 'exercise')
       .eq('id', exerciseId)
       .maybeSingle();
@@ -256,14 +256,14 @@ async function handleGet(body: ExercisesRequestBody) {
       }, 400);
     }
 
-    if (!codeRecord?.exercise_id) {
+    if (!(codeRecord as any)?.target_id) {
       return jsonResponse({
         error: 'EXERCISE_NOT_FOUND',
         message: 'Exercise not found for provided identifier'
       }, 404);
     }
 
-    targetId = codeRecord.exercise_id;
+    targetId = (codeRecord as any).target_id;
     directLookup = await fetchExerciseWithCode(targetId);
   }
 

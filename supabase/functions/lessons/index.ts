@@ -99,7 +99,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           .insert({
             id: displayCode,
             type: 'lesson',
-            lesson_id: lessonCode,
+            target_id: lessonCode,
           })
           .select()
           .single();

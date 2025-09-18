@@ -64,7 +64,7 @@ serve(async (req: Request): Promise<Response> => {
     console.log("🔍 Fetching codes from database...");
     const { data: codes, error: codesError } = await supabase
       .from('codes')
-      .select('id, type, lesson_id, exercise_id, created_at')
+      .select('id, type, target_id, created_at')
       .order('created_at', { ascending: false });
 
     if (codesError) {
@@ -90,7 +90,7 @@ serve(async (req: Request): Promise<Response> => {
     // Now enrich each code with exercise/lesson details using separate queries
     const enrichedCodes = await Promise.all(
       codes.map(async (code) => {
-        const targetId = code.type === 'exercise' ? code.exercise_id : code.lesson_id;
+        const targetId = code.target_id;
 
         try {
           let title = 'Unknown';
@@ -130,8 +130,8 @@ serve(async (req: Request): Promise<Response> => {
             id: code.id,
             type: code.type,
             target_id: targetId,
-            lesson_id: code.lesson_id,
-            exercise_id: code.exercise_id,
+            lesson_id: code.type === 'lesson' ? targetId : null,
+            exercise_id: code.type === 'exercise' ? targetId : null,
             created_at: code.created_at,
             title,
             details
@@ -143,8 +143,8 @@ serve(async (req: Request): Promise<Response> => {
             id: code.id,
             type: code.type,
             target_id: targetId,
-            lesson_id: code.lesson_id,
-            exercise_id: code.exercise_id,
+            lesson_id: code.type === 'lesson' ? targetId : null,
+            exercise_id: code.type === 'exercise' ? targetId : null,
             created_at: code.created_at,
             title: 'Unknown',
             details: code.type === 'exercise' ? { focus_hint: null } : { objectives: [] }
