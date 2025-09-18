@@ -177,6 +177,18 @@ router.post('/case', upload.single('file'), handleMulterError, async (req, res) 
         });
       }
     }
+
+    // Final JSON fallback to avoid empty responses
+    if (!res.headersSent) {
+      logger.error('Case upload ended without sending response', {
+        title: req.body?.title,
+        filename: req.file?.originalname || 'unknown'
+      });
+      return res.status(500).json({
+        error: 'UPLOAD_ERROR',
+        message: 'An unexpected error occurred during upload'
+      });
+    }
   }
 });
 
@@ -312,6 +324,19 @@ router.post('/protocol', upload.single('file'), handleMulterError, async (req, r
           error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
         });
       }
+    }
+
+    // Final JSON fallback to avoid empty responses
+    if (!res.headersSent) {
+      logger.error('Protocol upload ended without sending response', {
+        name: req.body?.name,
+        type: req.body?.type,
+        filename: req.file?.originalname || 'unknown'
+      });
+      return res.status(500).json({
+        error: 'UPLOAD_ERROR',
+        message: 'An unexpected error occurred during upload'
+      });
     }
   }
 });
