@@ -13,7 +13,7 @@ export class NavigatorAgent extends BaseAgent {
   }
 
   /**
-   * Generate feedforward guidance
+   * Generate feedforward guidance with adaptive focus based on exercise type
    */
   async generateResponse(context: AgentContext, userInput?: string): Promise<NavigatorResponse> {
     logger.debug('NavigatorAgent.generateResponse starting', {
@@ -21,31 +21,32 @@ export class NavigatorAgent extends BaseAgent {
       agentType: this.agentType,
       hasUserInput: !!userInput,
       userInputLength: userInput?.length || 0,
+      protocolsCount: context.protocols?.length || 0,
       willCallOpenAI: true
     });
 
-    // Enhanced context for Navigator with forward-looking focus
+    // Enhance context with adaptive focus based on exercise type
     const navigatorContext: AgentContext = {
       ...context,
-      exerciseConfig: {
-        ...context.exerciseConfig,
-        caseRole: 'Concerned Parent',
-        caseBackground: 'A parent is worried about their child\'s academic progress and emotional well-being. They want to understand what support is available and how they can help at home.'
-      }
+      conversationHistory: [
+        ...context.conversationHistory,
+        {
+          role: 'system',
+          content: this.buildAdaptiveFocusPrompt(context)
+        }
+      ]
     };
 
     let response;
-    let rawResponse;
     try {
       response = await super.generateResponse(navigatorContext, userInput);
-      rawResponse = response; // Capture raw before transformations
       
       logger.debug('NavigatorAgent received response from OpenAI', {
         sessionId: context.sessionId,
         agentType: this.agentType,
         responseType: (response as any)?.type,
-        hasGuidance: !!(response as any)?.guidance,
-        hasNextSteps: !!(response as any)?.next_steps
+        hasNextFocus: !!(response as any)?.next_focus,
+        hasMicroObjective: !!(response as any)?.micro_objective
       });
     } catch (error) {
       logger.error('NavigatorAgent OpenAI call failed', {
@@ -65,16 +66,74 @@ export class NavigatorAgent extends BaseAgent {
   }
 
   /**
-   * Generate initial session guidance (before any user input)
+   * Build adaptive focus prompt based on exercise type and protocols
+   */
+  private buildAdaptiveFocusPrompt(context: AgentContext): string {
+    const protocols = context.protocols || [];
+    const exerciseConfig = context.exerciseConfig;
+    
+    let focusPrompt = `CASE-KONTEXT: ${exerciseConfig?.caseBackground || 'Generisk träningssituation'}
+STUDENTENS ROLL: Träna samtalsteknik i denna specifika situation.
+
+PROTOKOLL-FOKUS: `;
+
+    // Detect exercise type and adapt focus
+    const hasBBIC = protocols.some(p => p.id?.includes('bbic') || p.name?.toLowerCase().includes('bbic'));
+    const hasProcessProtocol = protocols.some(p => p.id?.includes('process') || p.name?.toLowerCase().includes('process'));
+    
+    if (hasBBIC) {
+      focusPrompt += `Övningen använder BBIC-tillägg - fokusera på att täcka alla obligatoriska delar:
+- R-delen (relationsbyggande: R1-R5)
+- A-delen (analys och utforskning: A1-C3) 
+- Avslutsdelen (summering och framåtblick)
+Guida studenten att systematiskt arbeta genom dessa delar utan att missa viktiga moment.`;
+    } else if (hasProcessProtocol) {
+      focusPrompt += `Övningen använder processtillägg - fokusera på att öva specifika beteenden:
+- Kvalitativ parafrasering
+- Klargörande frågor
+- Empatiuttryck
+- Strukturering av samtalet
+Hjälp studenten att utveckla dessa specifika färdigheter genom repetition och förfining.`;
+    } else {
+      focusPrompt += `Övningen använder basprotokoll - fokusera på grundläggande samtalsförmågor:
+- Lyssning och förståelse
+- Respektfullt bemötande  
+- Tydlig kommunikation
+- Strukturerat samtalsledande
+Guida studenten att bygga solid grund i dessa kärnfärdigheter.`;
+    }
+
+    return focusPrompt;
+  }
+
+  /**
+   * Generate initial session guidance (briefing before exercise starts)
    */
   async generateInitialGuidance(context: AgentContext): Promise<NavigatorResponse> {
+    const protocols = context.protocols || [];
+    const exerciseConfig = context.exerciseConfig;
+    
+    // Create introduction briefing prompt
+    const briefingPrompt = `UPPDRAG: Ge en kort inledande briefing till studenten innan övningen börjar.
+
+CASE-SCENARIO: ${exerciseConfig?.caseBackground || 'Övningssituation'}
+STUDENTENS ROLL: ${exerciseConfig?.caseRole || 'Samtalsledare'}
+
+Skapa en välkomnande och tydlig briefing som:
+1. Förklarar vad studenten ska träna på i denna övning
+2. Sätter förväntningar utan att avslöja svar
+3. Ger känsla av trygghet och stöd
+4. Motiverar varför denna träning är värdefull
+
+Använd formatet: "I den här övningen kommer du särskilt träna på..." och fortsätt med konkret, uppmuntrande vägledning.`;
+
     const enhancedContext: AgentContext = {
       ...context,
       conversationHistory: [
         ...context.conversationHistory,
         {
           role: 'system',
-          content: 'The student is about to begin their first interaction. Provide proactive guidance to help them start effectively.'
+          content: briefingPrompt
         }
       ]
     };
@@ -83,7 +142,7 @@ export class NavigatorAgent extends BaseAgent {
   }
 
   /**
-   * Generate mid-conversation guidance
+   * Generate mid-conversation guidance with coaching approach
    */
   async generateMidConversationGuidance(
     context: AgentContext, 
@@ -99,16 +158,27 @@ export class NavigatorAgent extends BaseAgent {
       hasAnalystScores: !!conversationState.lastAnalystScores,
       willCallOpenAI: true
     });
-    let guidancePrompt = `The student has completed ${conversationState.turnCount} interaction(s). Provide guidance for their next response.`;
 
-    // Include analyst feedback context if available
+    // Build coaching guidance prompt
+    let guidancePrompt = `LÖPANDE COACHING: Studenten har genomfört ${conversationState.turnCount} interaktion(er). 
+
+Ge 1-2 meningar med feedforward-ledtrådar som:
+- Hjälper studenten styra mot rätt protokolldel
+- Håller fokus på case-situationen
+- Uppmuntrar utan att ge facit
+- Stöttar studentens egen upptäcktprocess`;
+
+    // Include subtle direction based on analyst feedback
     if (conversationState.lastAnalystScores) {
       const lowScoreAreas = conversationState.lastAnalystScores
-        .filter(score => score.score < 3)
+        .filter(score => score.score < 2)
         .map(score => score.field);
       
       if (lowScoreAreas.length > 0) {
-        guidancePrompt += ` Focus on improving: ${lowScoreAreas.join(', ')}.`;
+        guidancePrompt += `
+
+SUBTIL STYRNING: Utan att nämna specifika brister, guida försiktigt mot förbättringar inom: ${lowScoreAreas.join(', ')}.
+Använd positiv språkföring som "Kom ihåg att..." eller "Nästa steg kan vara att utforska..."`;
       }
     }
 
