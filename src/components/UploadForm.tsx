@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Upload, FileText, X, Check, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+const API_BASE_URL = '/api';
 
 // Robust response parser that handles non-JSON responses
 const parseResponse = async (res: Response) => {

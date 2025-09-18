@@ -432,4 +432,6 @@ router.post('/protocol', upload.single('file'), handleMulterError, async (req, r
   }
 });
 
+router.use(handleMulterError);
+
 export { router as uploadRoutes };
