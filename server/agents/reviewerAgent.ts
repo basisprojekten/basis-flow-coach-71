@@ -4,6 +4,7 @@
 
 import { BaseAgent, AgentContext } from './baseAgent';
 import { ReviewerResponse } from '../schemas/agentSchemas';
+import { getReviewerPrompt } from '../prompts/reviewer';
 
 export class ReviewerAgent extends BaseAgent {
   constructor() {
@@ -25,10 +26,23 @@ export class ReviewerAgent extends BaseAgent {
     // Parse transcript into conversation turns
     const conversationHistory = this.parseTranscript(transcript);
     
+    // Enhanced context with custom reviewer prompt
+    const reviewerPrompt = getReviewerPrompt({ 
+      focus: exerciseConfig?.focusHint,
+      caseRole: 'Various roles',
+      caseBackground: 'Complete conversation transcript analysis'
+    });
+    
     const context: AgentContext = {
       sessionId: 'transcript_analysis',
       protocols,
-      conversationHistory,
+      conversationHistory: [
+        ...conversationHistory,
+        {
+          role: 'system',
+          content: reviewerPrompt
+        }
+      ],
       exerciseConfig: {
         focusHint: exerciseConfig?.focusHint || 'Comprehensive conversation analysis',
         caseRole: 'Various roles',
@@ -51,13 +65,16 @@ export class ReviewerAgent extends BaseAgent {
    */
   async generateSessionSummary(context: AgentContext): Promise<ReviewerResponse> {
     
+    // Enhanced context with custom reviewer prompt
+    const reviewerPrompt = getReviewerPrompt(context.exerciseConfig);
+    
     const enhancedContext: AgentContext = {
       ...context,
       conversationHistory: [
         ...context.conversationHistory,
         {
           role: 'system',
-          content: 'Provide a comprehensive summary of the entire training session. Focus on overall patterns, growth demonstrated, and key development areas across all interactions.'
+          content: reviewerPrompt
         }
       ]
     };
