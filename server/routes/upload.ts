@@ -92,7 +92,10 @@ const handleMulterError = (error: any, req: express.Request, res: express.Respon
     });
   }
   
-  next(error);
+  return res.status(500).json({
+    error: 'UPLOAD_ERROR',
+    message: error.message || 'Unexpected server error'
+  });
 };
 
 // Configure multer for file uploads

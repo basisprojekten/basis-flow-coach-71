@@ -89,6 +89,16 @@ app.use('*', (req, res) => {
 // Error handling
 app.use(errorHandler);
 
+// Global error handler - final safety net to ensure JSON responses
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error("Global error handler:", err);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ 
+    error: 'INTERNAL_ERROR', 
+    message: err.message || 'Unexpected server error' 
+  });
+});
+
 // Graceful shutdown
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received, shutting down gracefully');
