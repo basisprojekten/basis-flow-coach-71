@@ -367,7 +367,7 @@ const Teacher = () => {
                       <SelectContent>
                         {protocols.filter(p => (p.type === 'content' || p.type === 'process') && 
                           !exerciseForm.supplementProtocolIds.includes(p.id)).length === 0 ? (
-                          <SelectItem value="" disabled>No supplement protocols available</SelectItem>
+                          <SelectItem value="no-supplements" disabled>No supplement protocols available</SelectItem>
                         ) : (
                           protocols.filter(p => (p.type === 'content' || p.type === 'process') && 
                             !exerciseForm.supplementProtocolIds.includes(p.id)).map((protocol) => (
