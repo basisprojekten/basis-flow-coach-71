@@ -6,6 +6,7 @@ import { BaseAgent, AgentContext } from './baseAgent';
 import { AnalystResponse } from '../schemas/agentSchemas';
 import { logger } from '../config/logger';
 import { nanoid } from 'nanoid';
+import { getAnalystPrompt } from '../prompts/analyst';
 
 export class AnalystAgent extends BaseAgent {
   constructor() {
@@ -28,7 +29,9 @@ export class AnalystAgent extends BaseAgent {
       throw new Error('Analyst agent requires user input to analyze');
     }
 
-    // Enhanced context for Analyst with retrospective focus
+    // Enhanced context for Analyst with custom prompt injection
+    const analystPrompt = getAnalystPrompt(context.exerciseConfig);
+    
     const analystContext: AgentContext = {
       ...context,
       conversationHistory: [
@@ -39,7 +42,7 @@ export class AnalystAgent extends BaseAgent {
         },
         {
           role: 'system', 
-          content: `Analyze the student's response: "${userInput}". Focus ONLY on what just happened. No future recommendations.`
+          content: analystPrompt
         }
       ]
     };
