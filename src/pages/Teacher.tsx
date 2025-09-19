@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { exerciseApi, lessonApi, codeApi } from '@/lib/api';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   ArrowLeft,
   Plus,
@@ -21,7 +22,11 @@ import {
   Users,
   FileText,
   Code,
-  Eye
+  Eye,
+  Upload,
+  X,
+  CheckCircle,
+  Loader2
 } from 'lucide-react';
 
 const Teacher = () => {
@@ -51,6 +56,23 @@ const Teacher = () => {
   });
 
   const [generatedCodes, setGeneratedCodes] = useState<any[]>([]);
+
+  // New Lesson Creator State
+  const [newLessonForm, setNewLessonForm] = useState({
+    title: ''
+  });
+  
+  const [currentLesson, setCurrentLesson] = useState<any>(null);
+  const [lessonExercises, setLessonExercises] = useState<any[]>([]);
+  
+  const [newExerciseForm, setNewExerciseForm] = useState({
+    title: '',
+    focus_area: ''
+  });
+  
+  const [isCreatingLesson, setIsCreatingLesson] = useState(false);
+  const [isCreatingExercise, setIsCreatingExercise] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState<Record<string, boolean>>({});
 
   const handleCreateExercise = async () => {
     try {
@@ -146,6 +168,158 @@ const Teacher = () => {
     }
   };
 
+  // New Lesson Creator Functions
+  const handleCreateNewLesson = async () => {
+    if (!newLessonForm.title.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please provide a lesson title",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsCreatingLesson(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('lesson-handler', {
+        body: {
+          type: 'lesson',
+          title: newLessonForm.title
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        setCurrentLesson(data.lesson);
+        setNewLessonForm({ title: '' });
+        toast({
+          title: "Success",
+          description: "Lesson created successfully!"
+        });
+      }
+    } catch (error) {
+      console.error('Failed to create lesson:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create lesson. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsCreatingLesson(false);
+    }
+  };
+
+  const handleAddExercise = async () => {
+    if (!newExerciseForm.title.trim() || !newExerciseForm.focus_area.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please provide both title and focus area",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!currentLesson) {
+      toast({
+        title: "Error",
+        description: "Please create a lesson first",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsCreatingExercise(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('lesson-handler', {
+        body: {
+          type: 'exercise',
+          title: newExerciseForm.title,
+          focus_area: newExerciseForm.focus_area,
+          lesson_id: currentLesson.id
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        const newExercise = { ...data.exercise, documents: [] };
+        setLessonExercises(prev => [...prev, newExercise]);
+        setNewExerciseForm({ title: '', focus_area: '' });
+        toast({
+          title: "Success",
+          description: "Exercise added successfully!"
+        });
+      }
+    } catch (error) {
+      console.error('Failed to create exercise:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create exercise. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsCreatingExercise(false);
+    }
+  };
+
+  const handleFileUpload = async (exerciseId: string, file: File, documentType: 'case' | 'protocol') => {
+    if (!file.name.toLowerCase().endsWith('.docx')) {
+      toast({
+        title: "Invalid File Type",
+        description: "Only .docx files are supported",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const uploadKey = `${exerciseId}-${documentType}`;
+    setUploadingFiles(prev => ({ ...prev, [uploadKey]: true }));
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('exercise_id', exerciseId);
+      formData.append('document_type', documentType);
+
+      const { data, error } = await supabase.functions.invoke('document-uploader', {
+        body: formData
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        // Update the exercise's documents in state
+        setLessonExercises(prev => prev.map(ex => 
+          ex.id === exerciseId 
+            ? { ...ex, documents: [...(ex.documents || []), data.document] }
+            : ex
+        ));
+        
+        toast({
+          title: "Success",
+          description: `${documentType.charAt(0).toUpperCase() + documentType.slice(1)} document uploaded successfully!`
+        });
+      }
+    } catch (error) {
+      console.error('Failed to upload document:', error);
+      toast({
+        title: "Error",
+        description: "Failed to upload document. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setUploadingFiles(prev => ({ ...prev, [uploadKey]: false }));
+    }
+  };
+
+  const resetLessonCreator = () => {
+    setCurrentLesson(null);
+    setLessonExercises([]);
+    setNewLessonForm({ title: '' });
+    setNewExerciseForm({ title: '', focus_area: '' });
+  };
+
   // Fetch codes on component mount
   React.useEffect(() => {
     fetchCodes();
@@ -181,8 +355,12 @@ const Teacher = () => {
       </header>
 
       <div className="container mx-auto px-6 py-8">
-        <Tabs defaultValue="exercises" className="space-y-8">
-          <TabsList className="grid w-full grid-cols-3">
+        <Tabs defaultValue="lesson-creator" className="space-y-8">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="lesson-creator" className="flex items-center gap-2">
+              <BookOpen className="h-4 w-4" />
+              Lesson Creator
+            </TabsTrigger>
             <TabsTrigger value="exercises" className="flex items-center gap-2">
               <Target className="h-4 w-4" />
               Exercises
@@ -196,6 +374,250 @@ const Teacher = () => {
               Generated Codes
             </TabsTrigger>
           </TabsList>
+
+          {/* New Lesson Creator */}
+          <TabsContent value="lesson-creator" className="space-y-6">
+            {!currentLesson ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BookOpen className="h-5 w-5 text-primary" />
+                    Create New Lesson
+                  </CardTitle>
+                  <CardDescription>
+                    Start by creating a lesson container, then add exercises and upload documents.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="new-lesson-title">Lesson Title</Label>
+                    <Input
+                      id="new-lesson-title"
+                      value={newLessonForm.title}
+                      onChange={(e) => setNewLessonForm({ title: e.target.value })}
+                      placeholder="e.g., Advanced Communication Skills Training"
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <Button 
+                      onClick={handleCreateNewLesson}
+                      disabled={isCreatingLesson || !newLessonForm.title.trim()}
+                    >
+                      {isCreatingLesson ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Plus className="h-4 w-4 mr-2" />
+                      )}
+                      Create Lesson
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-6">
+                {/* Current Lesson Info */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <BookOpen className="h-5 w-5 text-primary" />
+                          {currentLesson.title}
+                        </CardTitle>
+                        <CardDescription>
+                          Lesson ID: {currentLesson.id}
+                        </CardDescription>
+                      </div>
+                      <Button variant="outline" onClick={resetLessonCreator}>
+                        <X className="h-4 w-4 mr-2" />
+                        Start New Lesson
+                      </Button>
+                    </div>
+                  </CardHeader>
+                </Card>
+
+                {/* Add Exercise */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Target className="h-5 w-5 text-primary" />
+                      Add Exercise
+                    </CardTitle>
+                    <CardDescription>
+                      Add exercises to your lesson with title and focus area.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="exercise-title">Exercise Title</Label>
+                        <Input
+                          id="exercise-title"
+                          value={newExerciseForm.title}
+                          onChange={(e) => setNewExerciseForm(prev => ({ ...prev, title: e.target.value }))}
+                          placeholder="e.g., Difficult Conversation Practice"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="exercise-focus">Focus Area</Label>
+                        <Input
+                          id="exercise-focus"
+                          value={newExerciseForm.focus_area}
+                          onChange={(e) => setNewExerciseForm(prev => ({ ...prev, focus_area: e.target.value }))}
+                          placeholder="e.g., Active listening and empathy"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <Button 
+                        onClick={handleAddExercise}
+                        disabled={isCreatingExercise || !newExerciseForm.title.trim() || !newExerciseForm.focus_area.trim()}
+                      >
+                        {isCreatingExercise ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Plus className="h-4 w-4 mr-2" />
+                        )}
+                        Add Exercise
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Exercises List */}
+                {lessonExercises.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Lesson Exercises ({lessonExercises.length})</CardTitle>
+                      <CardDescription>
+                        Upload case and protocol documents for each exercise.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {lessonExercises.map((exercise, index) => (
+                        <Card key={exercise.id} className="p-4">
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h4 className="font-semibold">{exercise.title}</h4>
+                                <p className="text-sm text-muted-foreground">{exercise.focus_area}</p>
+                              </div>
+                              <Badge variant="outline">Exercise {index + 1}</Badge>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {/* Case Document Upload */}
+                              <div className="space-y-2">
+                                <Label>Case Document (.docx)</Label>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="file"
+                                    accept=".docx"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (file) handleFileUpload(exercise.id, file, 'case');
+                                    }}
+                                    className="hidden"
+                                    id={`case-${exercise.id}`}
+                                  />
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => document.getElementById(`case-${exercise.id}`)?.click()}
+                                    disabled={uploadingFiles[`${exercise.id}-case`]}
+                                  >
+                                    {uploadingFiles[`${exercise.id}-case`] ? (
+                                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    ) : (
+                                      <Upload className="h-4 w-4 mr-2" />
+                                    )}
+                                    Upload Case
+                                  </Button>
+                                  {exercise.documents?.some((d: any) => d.document_type === 'case') && (
+                                    <Badge variant="secondary" className="flex items-center gap-1">
+                                      <CheckCircle className="h-3 w-3" />
+                                      Uploaded
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Protocol Document Upload */}
+                              <div className="space-y-2">
+                                <Label>Protocol Document (.docx)</Label>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="file"
+                                    accept=".docx"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (file) handleFileUpload(exercise.id, file, 'protocol');
+                                    }}
+                                    className="hidden"
+                                    id={`protocol-${exercise.id}`}
+                                  />
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => document.getElementById(`protocol-${exercise.id}`)?.click()}
+                                    disabled={uploadingFiles[`${exercise.id}-protocol`]}
+                                  >
+                                    {uploadingFiles[`${exercise.id}-protocol`] ? (
+                                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    ) : (
+                                      <Upload className="h-4 w-4 mr-2" />
+                                    )}
+                                    Upload Protocol
+                                  </Button>
+                                  {exercise.documents?.some((d: any) => d.document_type === 'protocol') && (
+                                    <Badge variant="secondary" className="flex items-center gap-1">
+                                      <CheckCircle className="h-3 w-3" />
+                                      Uploaded
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Documents Summary */}
+                            {exercise.documents && exercise.documents.length > 0 && (
+                              <div className="space-y-2">
+                                <Label className="text-sm">Uploaded Documents:</Label>
+                                <div className="flex flex-wrap gap-2">
+                                  {exercise.documents.map((doc: any) => (
+                                    <Badge key={doc.id} variant="outline" className="text-xs">
+                                      {doc.document_type}: {doc.file_name}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </Card>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Lesson Complete Status */}
+                {lessonExercises.length > 0 && (
+                  <Card className="border-primary">
+                    <CardContent className="pt-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="font-semibold text-primary">Lesson Status</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {lessonExercises.length} exercise{lessonExercises.length !== 1 ? 's' : ''} created
+                          </p>
+                        </div>
+                        <CheckCircle className="h-8 w-8 text-primary" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
+          </TabsContent>
 
           {/* Exercise Creation */}
           <TabsContent value="exercises" className="space-y-6">
