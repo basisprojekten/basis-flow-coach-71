@@ -54,3 +54,9 @@ verify_jwt = false
 
 [functions.exercises]
 verify_jwt = false
+
+[functions.lesson-handler]
+verify_jwt = false
+
+[functions.document-uploader]
+verify_jwt = false
