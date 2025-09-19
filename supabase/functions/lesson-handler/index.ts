@@ -21,7 +21,7 @@ interface CreateExerciseRequest {
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { status: 200, headers: corsHeaders });
   }
 
   if (req.method !== 'POST') {
@@ -93,15 +93,15 @@ serve(async (req) => {
         });
       }
 
-      const exerciseData: any = { title, focus_area };
+      const exerciseInsert: any = { title, focus_area };
       if (lesson_id) {
-        exerciseData.lesson_id = lesson_id;
+        exerciseInsert.lesson_id = lesson_id;
       }
 
       // Create exercise
       const { data: exerciseData, error: exerciseError } = await supabase
         .from('exercises')
-        .insert(exerciseData)
+        .insert(exerciseInsert)
         .select()
         .single();
 
