@@ -59,56 +59,112 @@ export type Database = {
         }
         Relationships: []
       }
-      exercises: {
+      documents: {
         Row: {
-          case_id: string
           created_at: string
-          focus_hint: string | null
+          document_type: string
+          file_name: string
           id: string
-          protocols: Json
-          title: string
-          toggles: Json
+          storage_path: string
         }
         Insert: {
-          case_id: string
           created_at?: string
-          focus_hint?: string | null
-          id: string
-          protocols?: Json
-          title: string
-          toggles?: Json
+          document_type: string
+          file_name: string
+          id?: string
+          storage_path: string
         }
         Update: {
-          case_id?: string
           created_at?: string
-          focus_hint?: string | null
+          document_type?: string
+          file_name?: string
           id?: string
-          protocols?: Json
-          title?: string
-          toggles?: Json
+          storage_path?: string
         }
         Relationships: []
+      }
+      exercise_documents: {
+        Row: {
+          created_at: string
+          document_id: string
+          exercise_id: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          document_id: string
+          exercise_id: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          document_id?: string
+          exercise_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exercise_documents_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exercise_documents_exercise_id_fkey"
+            columns: ["exercise_id"]
+            isOneToOne: false
+            referencedRelation: "exercises"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exercises: {
+        Row: {
+          created_at: string
+          focus_area: string
+          id: string
+          lesson_id: string | null
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          focus_area: string
+          id?: string
+          lesson_id?: string | null
+          title: string
+        }
+        Update: {
+          created_at?: string
+          focus_area?: string
+          id?: string
+          lesson_id?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exercises_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       lessons: {
         Row: {
           created_at: string
-          exercise_order: Json
           id: string
-          objectives: Json
           title: string
         }
         Insert: {
           created_at?: string
-          exercise_order?: Json
-          id: string
-          objectives?: Json
+          id?: string
           title: string
         }
         Update: {
           created_at?: string
-          exercise_order?: Json
           id?: string
-          objectives?: Json
           title?: string
         }
         Relationships: []
