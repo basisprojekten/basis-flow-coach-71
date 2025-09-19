@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -7,6 +7,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { exerciseApi, lessonApi, codeApi } from '@/lib/api';
@@ -24,7 +26,10 @@ import {
   Upload,
   X,
   CheckCircle,
-  Loader2
+  Loader2,
+  Library,
+  Eye,
+  Trash2
 } from 'lucide-react';
 
 const Teacher = () => {
@@ -64,8 +69,18 @@ const Teacher = () => {
   });
   
   const [currentExercise, setCurrentExercise] = useState<any>(null);
-  const [protocolDocuments, setProtocolDocuments] = useState<any[]>([]);
-  const [caseDocument, setCaseDocument] = useState<any>(null);
+  const [currentAccessCode, setCurrentAccessCode] = useState<any>(null);
+  const [selectedProtocols, setSelectedProtocols] = useState<any[]>([]);
+  const [selectedCase, setSelectedCase] = useState<any>(null);
+  
+  // My Exercises State
+  const [allExercises, setAllExercises] = useState<any[]>([]);
+  const [loadingExercises, setLoadingExercises] = useState(false);
+  
+  // Document Library State
+  const [documentLibrary, setDocumentLibrary] = useState<any[]>([]);
+  const [loadingLibrary, setLoadingLibrary] = useState(false);
+  const [uploadingToLibrary, setUploadingToLibrary] = useState(false);
   
   // Optional Lesson Creator State
   const [newLessonForm, setNewLessonForm] = useState({
@@ -170,6 +185,110 @@ const Teacher = () => {
     }
   };
 
+  // Fetch all exercises
+  const fetchAllExercises = async () => {
+    setLoadingExercises(true);
+    try {
+      const { data: exercises, error: exerciseError } = await supabase
+        .from('exercises')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (exerciseError) throw exerciseError;
+
+      // Fetch corresponding codes for each exercise
+      const { data: codes, error: codeError } = await supabase
+        .from('codes')
+        .select('*')
+        .eq('type', 'exercise');
+
+      if (codeError) throw codeError;
+
+      // Combine exercises with their codes
+      const exercisesWithCodes = exercises.map(exercise => {
+        const code = codes.find(c => c.target_id === exercise.id);
+        return { ...exercise, access_code: code?.id || 'N/A' };
+      });
+
+      setAllExercises(exercisesWithCodes);
+    } catch (error) {
+      console.error('Failed to fetch exercises:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch exercises",
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingExercises(false);
+    }
+  };
+
+  // Fetch document library
+  const fetchDocumentLibrary = async () => {
+    setLoadingLibrary(true);
+    try {
+      const { data, error } = await supabase
+        .from('documents')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setDocumentLibrary(data || []);
+    } catch (error) {
+      console.error('Failed to fetch document library:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch document library",
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingLibrary(false);
+    }
+  };
+
+  // Upload document to library
+  const handleLibraryUpload = async (file: File, documentType: 'case' | 'protocol') => {
+    if (!file.name.toLowerCase().endsWith('.docx')) {
+      toast({
+        title: "Invalid File Type",
+        description: "Only .docx files are supported",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setUploadingToLibrary(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('document_type', documentType);
+      // Don't set exercise_id for library uploads
+
+      const { data, error } = await supabase.functions.invoke('document-uploader', {
+        body: formData
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        await fetchDocumentLibrary(); // Refresh library
+        toast({
+          title: "Success",
+          description: `${documentType.charAt(0).toUpperCase() + documentType.slice(1)} document uploaded to library!`
+        });
+      }
+    } catch (error) {
+      console.error('Failed to upload document to library:', error);
+      toast({
+        title: "Error",
+        description: "Failed to upload document to library. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setUploadingToLibrary(false);
+    }
+  };
+
   // Standalone Exercise Creator Functions
   const handleCreateStandaloneExercise = async () => {
     if (!standaloneExerciseForm.title.trim() || !standaloneExerciseForm.focus_area.trim()) {
@@ -196,9 +315,17 @@ const Teacher = () => {
 
       if (data.success) {
         setCurrentExercise(data.exercise);
+        setCurrentAccessCode(data.code);
+        
+        // If documents are selected, link them to the exercise
+        await linkDocumentsToExercise(data.exercise.id);
+        
+        // Refresh exercises list
+        await fetchAllExercises();
+        
         toast({
           title: "Success",
-          description: "Standalone exercise created successfully!"
+          description: `Exercise created successfully! Access code: ${data.code.id}`
         });
       }
     } catch (error) {
@@ -210,6 +337,40 @@ const Teacher = () => {
       });
     } finally {
       setIsCreatingExercise(false);
+    }
+  };
+
+  // Link selected documents to exercise
+  const linkDocumentsToExercise = async (exerciseId: string) => {
+    const documentsToLink = [];
+    
+    if (selectedCase) {
+      documentsToLink.push({
+        exercise_id: exerciseId,
+        document_id: selectedCase.id
+      });
+    }
+    
+    selectedProtocols.forEach(protocol => {
+      documentsToLink.push({
+        exercise_id: exerciseId,
+        document_id: protocol.id
+      });
+    });
+
+    if (documentsToLink.length > 0) {
+      const { error } = await supabase
+        .from('exercise_documents')
+        .insert(documentsToLink);
+
+      if (error) {
+        console.error('Failed to link documents to exercise:', error);
+        toast({
+          title: "Warning",
+          description: "Exercise created but failed to link some documents",
+          variant: "destructive"
+        });
+      }
     }
   };
 
@@ -254,74 +415,19 @@ const Teacher = () => {
     }
   };
 
-  const handleFileUpload = async (file: File, documentType: 'case' | 'protocol') => {
-    if (!currentExercise) {
-      toast({
-        title: "Error",
-        description: "Please create an exercise first",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (!file.name.toLowerCase().endsWith('.docx')) {
-      toast({
-        title: "Invalid File Type",
-        description: "Only .docx files are supported",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    const uploadKey = `${currentExercise.id}-${documentType}-${Date.now()}`;
-    setUploadingFiles(prev => ({ ...prev, [uploadKey]: true }));
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('exercise_id', currentExercise.id);
-      formData.append('document_type', documentType);
-
-      const { data, error } = await supabase.functions.invoke('document-uploader', {
-        body: formData
-      });
-
-      if (error) throw error;
-
-      if (data.success) {
-        if (documentType === 'case') {
-          setCaseDocument(data.document);
-        } else {
-          setProtocolDocuments(prev => [...prev, data.document]);
-        }
-        
-        toast({
-          title: "Success",
-          description: `${documentType.charAt(0).toUpperCase() + documentType.slice(1)} document uploaded successfully!`
-        });
-      }
-    } catch (error) {
-      console.error('Failed to upload document:', error);
-      toast({
-        title: "Error",
-        description: "Failed to upload document. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setUploadingFiles(prev => ({ ...prev, [uploadKey]: false }));
-    }
-  };
-
   const resetExerciseCreator = () => {
     setCurrentExercise(null);
-    setProtocolDocuments([]);
-    setCaseDocument(null);
+    setCurrentAccessCode(null);
+    setSelectedProtocols([]);
+    setSelectedCase(null);
     setStandaloneExerciseForm({ title: '', focus_area: '' });
   };
 
-  // Fetch codes on component mount
-  React.useEffect(() => {
+  // Fetch data on component mount
+  useEffect(() => {
     fetchCodes();
+    fetchAllExercises();
+    fetchDocumentLibrary();
   }, []);
 
   return (
@@ -355,10 +461,18 @@ const Teacher = () => {
 
       <div className="container mx-auto px-6 py-8">
         <Tabs defaultValue="exercise-creator" className="space-y-8">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="exercise-creator" className="flex items-center gap-2">
               <Target className="h-4 w-4" />
               Exercise Creator
+            </TabsTrigger>
+            <TabsTrigger value="my-exercises" className="flex items-center gap-2">
+              <Eye className="h-4 w-4" />
+              My Exercises
+            </TabsTrigger>
+            <TabsTrigger value="document-library" className="flex items-center gap-2">
+              <Library className="h-4 w-4" />
+              Document Library
             </TabsTrigger>
             <TabsTrigger value="lesson-creator" className="flex items-center gap-2">
               <BookOpen className="h-4 w-4" />
@@ -408,6 +522,80 @@ const Teacher = () => {
                       />
                     </div>
                   </div>
+
+                  {/* Document Selection */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold">Select Documents from Library</h3>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {/* Case Document Selection */}
+                      <div className="space-y-2">
+                        <Label>Case Document</Label>
+                        <Select onValueChange={(value) => {
+                          const doc = documentLibrary.find(d => d.id === value);
+                          setSelectedCase(doc);
+                        }}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a case document" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {documentLibrary.filter(doc => doc.document_type === 'case').map((doc) => (
+                              <SelectItem key={doc.id} value={doc.id}>
+                                {doc.file_name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {selectedCase && (
+                          <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                            <span className="text-sm">{selectedCase.file_name}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Protocol Documents Selection */}
+                      <div className="space-y-2">
+                        <Label>Protocol Documents</Label>
+                        <Select onValueChange={(value) => {
+                          const doc = documentLibrary.find(d => d.id === value);
+                          if (doc && !selectedProtocols.find(p => p.id === doc.id)) {
+                            setSelectedProtocols(prev => [...prev, doc]);
+                          }
+                        }}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select protocol documents" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {documentLibrary.filter(doc => doc.document_type === 'protocol').map((doc) => (
+                              <SelectItem key={doc.id} value={doc.id}>
+                                {doc.file_name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {selectedProtocols.length > 0 && (
+                          <div className="space-y-2">
+                            <Label className="text-sm">Selected Protocols ({selectedProtocols.length})</Label>
+                            {selectedProtocols.map((protocol) => (
+                              <div key={protocol.id} className="flex items-center justify-between p-2 bg-muted rounded-lg">
+                                <div className="flex items-center gap-2">
+                                  <CheckCircle className="h-4 w-4 text-green-500" />
+                                  <span className="text-sm">{protocol.file_name}</span>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setSelectedProtocols(prev => prev.filter(p => p.id !== protocol.id))}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                   <div className="flex justify-end">
                     <Button 
                       onClick={handleCreateStandaloneExercise}
@@ -436,6 +624,11 @@ const Teacher = () => {
                         </CardTitle>
                         <CardDescription>
                           Focus: {currentExercise.focus_area} | ID: {currentExercise.id}
+                          {currentAccessCode && (
+                            <Badge variant="secondary" className="ml-2">
+                              Access Code: {currentAccessCode.id}
+                            </Badge>
+                          )}
                         </CardDescription>
                       </div>
                       <Button variant="outline" onClick={resetExerciseCreator}>
@@ -446,94 +639,228 @@ const Teacher = () => {
                   </CardHeader>
                 </Card>
 
-                {/* Document Upload Section */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Case Document Upload */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <FileText className="h-5 w-5 text-primary" />
-                        Case Document
-                      </CardTitle>
-                      <CardDescription>
-                        Upload the case document (.docx file)
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {!caseDocument ? (
-                        <div className="space-y-2">
-                          <Input
-                            type="file"
-                            accept=".docx"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) handleFileUpload(file, 'case');
-                            }}
-                            className="cursor-pointer"
-                          />
-                          <p className="text-sm text-muted-foreground">
-                            Select a .docx file for the case document
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                          <span className="text-sm font-medium">{caseDocument.file_name}</span>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  {/* Protocol Documents Upload */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <FileText className="h-5 w-5 text-primary" />
-                        Protocol Documents
-                      </CardTitle>
-                      <CardDescription>
-                        Upload multiple protocol documents (.docx files)
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="space-y-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            const input = document.createElement('input');
-                            input.type = 'file';
-                            input.accept = '.docx';
-                            input.onchange = (e) => {
-                              const file = (e.target as HTMLInputElement).files?.[0];
-                              if (file) handleFileUpload(file, 'protocol');
-                            };
-                            input.click();
-                          }}
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add Protocol
-                        </Button>
+                {/* Exercise Summary */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <CheckCircle className="h-5 w-5 text-green-500" />
+                      Exercise Created Successfully
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div>
+                        <Label className="text-sm font-medium">Selected Case Document</Label>
+                        {selectedCase ? (
+                          <div className="flex items-center gap-2 p-2 bg-muted rounded-lg mt-2">
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                            <span className="text-sm">{selectedCase.file_name}</span>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground mt-2">No case document selected</p>
+                        )}
                       </div>
-                      
-                      {protocolDocuments.length > 0 && (
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium">Uploaded Protocols ({protocolDocuments.length})</Label>
-                          <div className="space-y-2">
-                            {protocolDocuments.map((doc, index) => (
-                              <div key={doc.id} className="flex items-center gap-2 p-2 bg-muted rounded-lg">
+                      <div>
+                        <Label className="text-sm font-medium">Selected Protocol Documents</Label>
+                        {selectedProtocols.length > 0 ? (
+                          <div className="space-y-2 mt-2">
+                            {selectedProtocols.map((protocol) => (
+                              <div key={protocol.id} className="flex items-center gap-2 p-2 bg-muted rounded-lg">
                                 <CheckCircle className="h-4 w-4 text-green-500" />
-                                <span className="text-sm">{doc.file_name}</span>
+                                <span className="text-sm">{protocol.file_name}</span>
                               </div>
                             ))}
                           </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground mt-2">No protocol documents selected</p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* My Exercises */}
+          <TabsContent value="my-exercises" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Eye className="h-5 w-5 text-primary" />
+                  My Exercises
+                </CardTitle>
+                <CardDescription>
+                  View all created exercises and their access codes
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loadingExercises ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                    <span className="ml-2">Loading exercises...</span>
+                  </div>
+                ) : allExercises.length > 0 ? (
+                  <div className="space-y-4">
+                    {allExercises.map((exercise) => (
+                      <div key={exercise.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Target className="h-4 w-4 text-primary" />
+                            <span className="font-semibold">{exercise.title}</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground mb-1">
+                            Focus: {exercise.focus_area}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            Created: {new Date(exercise.created_at).toLocaleDateString()}
+                          </p>
                         </div>
-                      )}
+                        <div className="text-right">
+                          <div className="font-mono text-lg font-bold text-primary">
+                            {exercise.access_code}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Access Code
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <Target className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No exercises created yet</h3>
+                    <p className="text-muted-foreground mb-4">
+                      Create your first exercise to get started.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Document Library */}
+          <TabsContent value="document-library" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Library className="h-5 w-5 text-primary" />
+                  Document Library
+                </CardTitle>
+                <CardDescription>
+                  Upload and manage documents that can be reused across exercises
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Upload Section */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Upload Case Document</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Input
+                        type="file"
+                        accept=".docx"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleLibraryUpload(file, 'case');
+                        }}
+                        className="cursor-pointer"
+                        disabled={uploadingToLibrary}
+                      />
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Upload Protocol Document</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Input
+                        type="file"
+                        accept=".docx"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleLibraryUpload(file, 'protocol');
+                        }}
+                        className="cursor-pointer"
+                        disabled={uploadingToLibrary}
+                      />
                     </CardContent>
                   </Card>
                 </div>
-              </div>
-            )}
+
+                {uploadingToLibrary && (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                    <span>Uploading document...</span>
+                  </div>
+                )}
+
+                <Separator />
+
+                {/* Document List */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Uploaded Documents</h3>
+                  {loadingLibrary ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                      <span className="ml-2">Loading documents...</span>
+                    </div>
+                  ) : documentLibrary.length > 0 ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {/* Case Documents */}
+                      <div>
+                        <h4 className="font-medium mb-2">Case Documents</h4>
+                        <div className="space-y-2">
+                          {documentLibrary.filter(doc => doc.document_type === 'case').map((doc) => (
+                            <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg">
+                              <div className="flex items-center gap-2">
+                                <FileText className="h-4 w-4 text-primary" />
+                                <span className="text-sm font-medium">{doc.file_name}</span>
+                              </div>
+                              <Badge variant="secondary">Case</Badge>
+                            </div>
+                          ))}
+                          {documentLibrary.filter(doc => doc.document_type === 'case').length === 0 && (
+                            <p className="text-sm text-muted-foreground">No case documents uploaded</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Protocol Documents */}
+                      <div>
+                        <h4 className="font-medium mb-2">Protocol Documents</h4>
+                        <div className="space-y-2">
+                          {documentLibrary.filter(doc => doc.document_type === 'protocol').map((doc) => (
+                            <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg">
+                              <div className="flex items-center gap-2">
+                                <FileText className="h-4 w-4 text-primary" />
+                                <span className="text-sm font-medium">{doc.file_name}</span>
+                              </div>
+                              <Badge variant="secondary">Protocol</Badge>
+                            </div>
+                          ))}
+                          {documentLibrary.filter(doc => doc.document_type === 'protocol').length === 0 && (
+                            <p className="text-sm text-muted-foreground">No protocol documents uploaded</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <Library className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                      <h3 className="text-lg font-semibold mb-2">No documents uploaded yet</h3>
+                      <p className="text-muted-foreground mb-4">
+                        Upload case and protocol documents to build your reusable library.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Optional Lesson Creator */}

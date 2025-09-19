@@ -97,27 +97,86 @@ serve(async (req) => {
         exerciseData.lesson_id = lesson_id;
       }
 
-      const { data, error } = await supabase
+      // Create exercise
+      const { data: exerciseData, error: exerciseError } = await supabase
         .from('exercises')
         .insert(exerciseData)
         .select()
         .single();
 
-      if (error) {
-        console.error('Database error creating exercise:', error);
+      if (exerciseError) {
+        console.error('Database error creating exercise:', exerciseError);
         return new Response(JSON.stringify({ 
           error: 'DATABASE_ERROR', 
-          message: error.message 
+          message: exerciseError.message 
         }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
-      console.log('Exercise created successfully:', data.id);
+      // Generate a unique access code
+      const generateCode = () => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        let result = '';
+        for (let i = 0; i < 8; i++) {
+          result += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return result;
+      };
+
+      let accessCode = generateCode();
+      let codeData;
+      
+      // Ensure code is unique by retrying if collision occurs
+      let attempts = 0;
+      while (attempts < 5) {
+        const { data: codeResult, error: codeError } = await supabase
+          .from('codes')
+          .insert({
+            id: accessCode,
+            type: 'exercise',
+            target_id: exerciseData.id
+          })
+          .select()
+          .single();
+
+        if (!codeError) {
+          codeData = codeResult;
+          break;
+        }
+
+        if (codeError.code === '23505') { // Unique constraint violation
+          accessCode = generateCode();
+          attempts++;
+        } else {
+          console.error('Database error creating access code:', codeError);
+          return new Response(JSON.stringify({ 
+            error: 'DATABASE_ERROR', 
+            message: codeError.message 
+          }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+      }
+
+      if (!codeData) {
+        console.error('Failed to generate unique access code after 5 attempts');
+        return new Response(JSON.stringify({ 
+          error: 'DATABASE_ERROR', 
+          message: 'Failed to generate unique access code' 
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      console.log('Exercise created successfully:', exerciseData.id, 'with code:', accessCode);
       return new Response(JSON.stringify({ 
         success: true, 
-        exercise: data 
+        exercise: exerciseData,
+        code: codeData
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
