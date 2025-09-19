@@ -15,12 +15,6 @@ export const validateApiKey = (
     return next();
   }
 
-  // Always allow unauthenticated access to upload healthcheck
-  const pathLower = req.path.toLowerCase();
-  if (pathLower === '/upload/health') {
-    return next();
-  }
-
   // Check if OpenAI API key is configured
   if (!process.env.OPENAI_API_KEY) {
     logger.error('OpenAI API key not configured');

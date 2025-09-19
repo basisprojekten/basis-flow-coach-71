@@ -21,9 +21,6 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   }
 });
 
-// Backward-compatible export name used throughout routes
-export const supabaseClient = supabase;
-
 // Health check function
 export async function checkSupabaseConnection(): Promise<boolean> {
   try {

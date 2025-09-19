@@ -361,34 +361,13 @@ export const transcriptApi = {
 // Protocol API (for managing rubrics and evaluation criteria)
 export const protocolApi = {
   // Get all available protocols
-  async list(): Promise<Array<{ id: string; name: string; version: string; type: string; raw_text: string }>> {
-    const { data, error } = await supabase.from('protocols').select('id, name, version, type, raw_text');
-    if (error) throw new BasisApiError(500, 'DATABASE_ERROR', error.message);
-    return data || [];
+  async list(): Promise<Array<{ id: string; name: string; version: string }>> {
+    return apiRequest('/protocols');
   },
 
   // Get specific protocol details
   async get(protocolId: string): Promise<any> {
-    const { data, error } = await supabase.from('protocols').select('*').eq('id', protocolId).single();
-    if (error) throw new BasisApiError(500, 'DATABASE_ERROR', error.message);
-    return data;
-  },
-};
-
-// Case API (for managing training scenarios)
-export const caseApi = {
-  // Get all available cases
-  async list(): Promise<Array<{ id: string; title: string; raw_text: string }>> {
-    const { data, error } = await supabase.from('cases').select('id, title, raw_text');
-    if (error) throw new BasisApiError(500, 'DATABASE_ERROR', error.message);
-    return data || [];
-  },
-
-  // Get specific case details
-  async get(caseId: string): Promise<any> {
-    const { data, error } = await supabase.from('cases').select('*').eq('id', caseId).single();
-    if (error) throw new BasisApiError(500, 'DATABASE_ERROR', error.message);
-    return data;
+    return apiRequest(`/protocols/${protocolId}`);
   },
 };
 
