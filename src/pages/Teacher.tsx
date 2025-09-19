@@ -74,7 +74,7 @@ const Teacher = () => {
   
   const [isCreatingExercise, setIsCreatingExercise] = useState(false);
   const [isCreatingLesson, setIsCreatingLesson] = useState(false);
-  const [uploadingFiles, setUploadingFiles] = useState<Record<string, boolean>>({});
+  const [uploadingFiles, setUploadingFiles] = useState({});
 
   const handleCreateExercise = async () => {
     try {
