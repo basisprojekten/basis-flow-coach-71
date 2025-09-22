@@ -43,15 +43,6 @@ serve(async (req) => {
       });
     }
 
-    if (!exercise_id && document_type !== 'library') {
-      return new Response(JSON.stringify({ 
-        error: 'VALIDATION_ERROR', 
-        message: 'Exercise ID is required for exercise-specific uploads' 
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
 
     if (!document_type || !['case', 'protocol'].includes(document_type)) {
       return new Response(JSON.stringify({ 
