@@ -100,7 +100,7 @@ serve(async (req: Request): Promise<Response> => {
             console.log(`🔍 Fetching exercise details for ${targetId}`);
             const { data: exercise, error: exerciseError } = await supabase
               .from('exercises')
-              .select('title, focus_hint')
+              .select('title, focus_area')
               .eq('id', targetId)
               .maybeSingle();
 
@@ -108,13 +108,13 @@ serve(async (req: Request): Promise<Response> => {
               console.error(`⚠️ Error fetching exercise ${targetId}:`, exerciseError);
             } else if (exercise) {
               title = exercise.title || 'Unknown';
-              details = { focus_hint: exercise.focus_hint };
+              details = { focus_area: (exercise as any).focus_area };
             }
           } else if (code.type === 'lesson') {
             console.log(`🔍 Fetching lesson details for ${targetId}`);
             const { data: lesson, error: lessonError } = await supabase
               .from('lessons')
-              .select('title, objectives')
+              .select('title')
               .eq('id', targetId)
               .maybeSingle();
 
@@ -122,7 +122,7 @@ serve(async (req: Request): Promise<Response> => {
               console.error(`⚠️ Error fetching lesson ${targetId}:`, lessonError);
             } else if (lesson) {
               title = lesson.title || 'Unknown';
-              details = { objectives: lesson.objectives || [] };
+              details = {};
             }
           }
 
@@ -147,7 +147,7 @@ serve(async (req: Request): Promise<Response> => {
             exercise_id: code.type === 'exercise' ? targetId : null,
             created_at: code.created_at,
             title: 'Unknown',
-            details: code.type === 'exercise' ? { focus_hint: null } : { objectives: [] }
+            details: code.type === 'exercise' ? { focus_area: null } : {}
           };
         }
       })
