@@ -144,13 +144,19 @@ async function createSession(config: {
           });
           exerciseConfig = demoExerciseConfig;
         } else {
+          // Create exercise config with defaults for missing fields
           exerciseConfig = {
             id: exercise.id,
             title: exercise.title,
-            caseId: exercise.case_id,
-            toggles: exercise.toggles as any,
-            focusHint: exercise.focus_hint || '',
-            protocols: exercise.protocols as string[]
+            caseId: 'default-case', // Default case ID since exercises table doesn't have case_id
+            toggles: {
+              feedforward: true,
+              iterative: true,
+              mode: 'text' as const,
+              skipRoleplayForGlobalFeedback: false
+            },
+            focusHint: exercise.focus_area || '', // Use focus_area as focusHint
+            protocols: ['basis-v1'] // Default protocol
           };
         }
       }
