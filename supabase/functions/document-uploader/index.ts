@@ -43,10 +43,10 @@ serve(async (req) => {
       });
     }
 
-    if (!exercise_id) {
+    if (!exercise_id && document_type !== 'library') {
       return new Response(JSON.stringify({ 
         error: 'VALIDATION_ERROR', 
-        message: 'Exercise ID is required' 
+        message: 'Exercise ID is required for exercise-specific uploads' 
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -74,29 +74,31 @@ serve(async (req) => {
       });
     }
 
-    // Verify exercise exists
-    const { data: exerciseCheck, error: exerciseError } = await supabase
-      .from('exercises')
-      .select('id')
-      .eq('id', exercise_id)
-      .single();
+    // Verify exercise exists only if exercise_id is provided
+    if (exercise_id) {
+      const { data: exerciseCheck, error: exerciseError } = await supabase
+        .from('exercises')
+        .select('id')
+        .eq('id', exercise_id)
+        .single();
 
-    if (exerciseError || !exerciseCheck) {
-      return new Response(JSON.stringify({ 
-        error: 'VALIDATION_ERROR', 
-        message: 'Invalid exercise ID' 
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      if (exerciseError || !exerciseCheck) {
+        return new Response(JSON.stringify({ 
+          error: 'VALIDATION_ERROR', 
+          message: 'Invalid exercise ID' 
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     console.log(`Processing file upload: ${file.name} for exercise: ${exercise_id}`);
 
-    // Generate unique file path
+    // Generate unique file path - use 'library' folder if no exercise_id
     const timestamp = new Date().toISOString().replace(/[:.-]/g, '');
     const fileName = `${timestamp}_${file.name}`;
-    const filePath = `${exercise_id}/${fileName}`;
+    const filePath = exercise_id ? `${exercise_id}/${fileName}` : `library/${fileName}`;
 
     // Convert File to Uint8Array for upload
     const fileArrayBuffer = await file.arrayBuffer();
@@ -166,35 +168,39 @@ serve(async (req) => {
 
     console.log('Document record created:', documentData.id);
 
-    // Link document to exercise
-    const { data: linkData, error: linkError } = await supabase
-      .from('exercise_documents')
-      .insert({
-        exercise_id: exercise_id,
-        document_id: documentData.id
-      })
-      .select()
-      .single();
+    // Link document to exercise only if exercise_id is provided
+    if (exercise_id) {
+      const { data: linkData, error: linkError } = await supabase
+        .from('exercise_documents')
+        .insert({
+          exercise_id: exercise_id,
+          document_id: documentData.id
+        })
+        .select()
+        .single();
 
-    if (linkError) {
-      console.error('Database error linking document to exercise:', linkError);
-      
-      // Try to clean up document record and file
-      await supabase.from('documents').delete().eq('id', documentData.id);
-      await supabase.storage
-        .from('documents')
-        .remove([uploadData.path]);
+      if (linkError) {
+        console.error('Database error linking document to exercise:', linkError);
+        
+        // Try to clean up document record and file
+        await supabase.from('documents').delete().eq('id', documentData.id);
+        await supabase.storage
+          .from('documents')
+          .remove([uploadData.path]);
 
-      return new Response(JSON.stringify({ 
-        error: 'DATABASE_ERROR', 
-        message: linkError.message 
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+        return new Response(JSON.stringify({ 
+          error: 'DATABASE_ERROR', 
+          message: linkError.message 
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      console.log('Document successfully linked to exercise:', linkData.id);
+    } else {
+      console.log('Document uploaded to library (no exercise link)');
     }
-
-    console.log('Document successfully linked to exercise:', linkData.id);
 
     return new Response(JSON.stringify({ 
       success: true,
