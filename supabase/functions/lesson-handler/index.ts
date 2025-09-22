@@ -1,5 +1,4 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// deno-lint-ignore-file no-explicit-any
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 
 const corsHeaders = {
@@ -8,203 +7,118 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { status: 200, headers: corsHeaders });
+function json(data: any, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders },
+  });
+}
+
+function generateAccessCode(prefix: 'EX' | 'LS' = 'EX') {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return `${prefix}-${code}`;
+}
+
+const supabase = createClient(
+  Deno.env.get('SUPABASE_URL') ?? '',
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+  {
+    auth: { autoRefreshToken: false, persistSession: false },
   }
+);
+
+Deno.serve(async (req: Request): Promise<Response> => {
+  // 1) Robust CORS preflight
+  if (req.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
 
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return json({ error: 'METHOD_NOT_ALLOWED', message: 'Only POST is supported' }, 405);
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const body = await req.json();
+    const { type } = body as { type?: 'exercise' | 'lesson' };
 
-    const requestBody = await req.json();
-    const { type } = requestBody;
-
-    console.log('Processing request for type:', type);
+    if (!type) return json({ error: 'VALIDATION_ERROR', message: 'Missing type' }, 400);
 
     if (type === 'exercise') {
-      const { title, focus_area, lesson_id } = requestBody;
+      const { title, focus_area, lesson_id } = body as { title?: string; focus_area?: string; lesson_id?: string | null };
 
       if (!title || !focus_area) {
-        return new Response(JSON.stringify({ 
-          error: 'VALIDATION_ERROR', 
-          message: 'Title and focus_area are required for exercises' 
-        }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return json({ error: 'VALIDATION_ERROR', message: 'title and focus_area are required' }, 400);
       }
 
-      // Create exercise
-      const exerciseData: any = { title, focus_area };
-      if (lesson_id) {
-        exerciseData.lesson_id = lesson_id;
-      }
-
-      const { data: newExercise, error: exerciseError } = await supabase
+      // Insert exercise first
+      const { data: exercise, error: exErr } = await supabase
         .from('exercises')
-        .insert(exerciseData)
-        .select()
+        .insert({ title, focus_area, ...(lesson_id ? { lesson_id } : {}) })
+        .select('*')
         .single();
 
-      if (exerciseError) {
-        console.error('Failed to create exercise:', exerciseError);
-        return new Response(JSON.stringify({ 
-          error: 'DATABASE_ERROR', 
-          message: exerciseError.message 
-        }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+      if (exErr || !exercise) {
+        console.error('Exercise insert failed:', exErr);
+        return json({ error: 'DATABASE_ERROR', message: 'Failed to create exercise', details: exErr }, 500);
       }
 
-      // Generate unique 6-character access code
-      const generateCode = () => {
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-        let result = '';
-        for (let i = 0; i < 6; i++) {
-          result += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return result;
-      };
-
-      let accessCode = generateCode();
+      // Create unique access code with retries
       let attempts = 0;
-      let newCode = null;
-
-      // Try to create unique access code with retries
-      while (attempts < 5) {
-        const { data: codeResult, error: codeError } = await supabase
+      let codeRow: any | null = null;
+      while (attempts < 6) {
+        const code = generateAccessCode('EX');
+        const { data, error } = await supabase
           .from('codes')
-          .insert({
-            id: accessCode,
-            type: 'exercise',
-            target_id: newExercise.id
-          })
-          .select()
+          .insert({ id: code, type: 'exercise', target_id: exercise.id })
+          .select('*')
           .single();
 
-        if (!codeError) {
-          newCode = codeResult;
+        if (!error && data) {
+          codeRow = data;
           break;
         }
 
-        if (codeError.code === '23505') { // Unique constraint violation
-          accessCode = generateCode();
-          attempts++;
-        } else {
-          console.error('Failed to create access code:', codeError);
-          
-          // Rollback: Delete the exercise that was just created
-          await supabase
-            .from('exercises')
-            .delete()
-            .eq('id', newExercise.id);
-
-          return new Response(JSON.stringify({ 
-            error: 'DATABASE_ERROR', 
-            message: 'Failed to create access code' 
-          }), {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
+        // Unique violation code in Postgres is 23505; any other error -> rollback immediately
+        if (error && (error as any).code !== '23505') {
+          console.error('Code insert failed (non-unique):', error);
+          // rollback: delete the exercise
+          await supabase.from('exercises').delete().eq('id', exercise.id);
+          return json({ error: 'DATABASE_ERROR', message: 'Failed to create access code', details: error }, 500);
         }
+
+        attempts++;
       }
 
-      if (!newCode) {
-        console.error('Failed to generate unique access code after 5 attempts');
-        
-        // Rollback: Delete the exercise that was just created
-        await supabase
-          .from('exercises')
-          .delete()
-          .eq('id', newExercise.id);
-
-        return new Response(JSON.stringify({ 
-          error: 'DATABASE_ERROR', 
-          message: 'Failed to generate unique access code after multiple attempts' 
-        }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+      if (!codeRow) {
+        console.error('Failed to generate unique access code after retries');
+        await supabase.from('exercises').delete().eq('id', exercise.id);
+        return json({ error: 'DATABASE_ERROR', message: 'Failed to generate unique access code' }, 500);
       }
 
-      console.log('Exercise created successfully:', newExercise.id, 'with code:', accessCode);
-      return new Response(JSON.stringify({ 
-        success: true, 
-        newExercise,
-        newCode
-      }), {
-        status: 201,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-
-    } else if (type === 'lesson') {
-      const { title } = requestBody;
-
-      if (!title) {
-        return new Response(JSON.stringify({ 
-          error: 'VALIDATION_ERROR', 
-          message: 'Title is required for lessons' 
-        }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      const { data: newLesson, error: lessonError } = await supabase
-        .from('lessons')
-        .insert({ title })
-        .select()
-        .single();
-
-      if (lessonError) {
-        console.error('Failed to create lesson:', lessonError);
-        return new Response(JSON.stringify({ 
-          error: 'DATABASE_ERROR', 
-          message: lessonError.message 
-        }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      console.log('Lesson created successfully:', newLesson.id);
-      return new Response(JSON.stringify({ 
-        success: true, 
-        newLesson
-      }), {
-        status: 201,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-
-    } else {
-      return new Response(JSON.stringify({ 
-        error: 'VALIDATION_ERROR', 
-        message: 'Type must be either "lesson" or "exercise"' 
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ success: true, exercise, code: codeRow }, 201);
     }
 
-  } catch (error) {
-    console.error('Unexpected error in lesson-handler function:', error);
-    return new Response(JSON.stringify({ 
-      error: 'INTERNAL_ERROR', 
-      message: error.message || 'Unexpected server error' 
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    if (type === 'lesson') {
+      const { title } = body as { title?: string };
+      if (!title) return json({ error: 'VALIDATION_ERROR', message: 'title is required' }, 400);
+
+      const { data: lesson, error: lessonErr } = await supabase
+        .from('lessons')
+        .insert({ title })
+        .select('*')
+        .single();
+
+      if (lessonErr || !lesson) {
+        console.error('Lesson insert failed:', lessonErr);
+        return json({ error: 'DATABASE_ERROR', message: 'Failed to create lesson', details: lessonErr }, 500);
+      }
+
+      return json({ success: true, lesson }, 201);
+    }
+
+    return json({ error: 'INVALID_TYPE', message: 'Type must be either "exercise" or "lesson"' }, 400);
+  } catch (err: any) {
+    console.error('Unexpected error in lesson-handler:', err);
+    return json({ error: 'INTERNAL_ERROR', message: err?.message || 'Unexpected server error' }, 500);
   }
 });
