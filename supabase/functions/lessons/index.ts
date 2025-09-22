@@ -71,11 +71,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         const { data: lesson, error: lessonError } = await supabase
           .from('lessons')
           .insert({
-            id: lessonCode,
-            title,
-            objectives: objectives,
-            exercise_order: exerciseOrder,
-            created_at: new Date().toISOString(),
+            title
           })
           .select()
           .single();
@@ -99,7 +95,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           .insert({
             id: displayCode,
             type: 'lesson',
-            target_id: lessonCode,
+            target_id: lesson.id
           })
           .select()
           .single();
@@ -116,7 +112,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         console.log('Lesson code created successfully:', lessonCodeRow);
 
         return jsonResponse({
-          id: lessonCode,
+          id: lesson.id,
           code: lessonCodeRow?.id ?? displayCode,
           lesson,
           accessCode: lessonCodeRow,

@@ -56,13 +56,21 @@ function generateDisplayCode(prefix: string): string {
 
 async function insertCase(caseData: ExerciseCasePayload) {
   const caseId = `case_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`;
+  
+  // Create structured case data that matches the actual database schema
+  const structuredData = {
+    role: caseData.role,
+    background: caseData.background,
+    goals: caseData.goals || null
+  };
+  
   const { data, error } = await supabase
     .from('cases')
     .insert({
       id: caseId,
-      role: caseData.role,
-      background: caseData.background,
-      goals: caseData.goals || null
+      title: `Case for ${caseData.role}`,
+      raw_text: `Role: ${caseData.role}\nBackground: ${caseData.background}\nGoals: ${caseData.goals || 'None specified'}`,
+      structured_json: structuredData
     })
     .select()
     .single();
@@ -88,10 +96,7 @@ async function insertExercise(payload: {
     .insert({
       id: payload.id,
       title: payload.title,
-      case_id: payload.caseId,
-      protocols: payload.protocolStack ?? [],
-      toggles: payload.toggles ?? {},
-      focus_hint: payload.focusHint ?? null
+      focus_area: payload.focusHint || 'General training'
     })
     .select()
     .single();
