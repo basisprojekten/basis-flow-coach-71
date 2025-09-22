@@ -52,7 +52,7 @@ interface ExerciseConfig {
   };
   focusHint: string;
   protocols: string[];
-  meta?: { linkedDocsSummary?: string };
+  meta?: { linkedDocsSummary?: string; caseContent?: string; protocolContent?: string; };
 }
 
 interface SessionState {
@@ -146,19 +146,30 @@ async function createSession(config: {
           });
           throw { __type: 'EXERCISE_NOT_FOUND', message: 'Exercise not found for provided code', __httpStatus: 404 } as any;
         } else {
-          // Fetch linked documents (if any) to inform prompts
+          // Fetch linked documents with content to inform prompts
           const { data: links, error: linksError } = await supabase
             .from('exercise_documents')
             .select('document_id')
             .eq('exercise_id', exercise.id);
           let documents: any[] = [];
+          let caseContent = '';
+          let protocolContent = '';
           if (!linksError && links && links.length) {
             const docIds = links.map((l: any) => l.document_id);
             const { data: docs } = await supabase
               .from('documents')
-              .select('id, file_name, document_type')
+              .select('id, file_name, document_type, content')
               .in('id', docIds);
             documents = docs || [];
+            
+            // Extract content by type
+            documents.forEach(doc => {
+              if (doc.document_type === 'case' && doc.content) {
+                caseContent = doc.content;
+              } else if (doc.document_type === 'protocol' && doc.content) {
+                protocolContent = doc.content;
+              }
+            });
           }
           linkedDocsSummary = documents.length ? `Linked documents: ${documents.map(d => `${d.document_type}:${d.file_name}`).join(', ')}` : '';
 
@@ -175,7 +186,11 @@ async function createSession(config: {
             },
             focusHint: exercise.focus_area || '', // Use focus_area as focusHint
             protocols: ['basis-v1'], // Default protocol
-            meta: linkedDocsSummary ? { linkedDocsSummary } : undefined
+            meta: { 
+              linkedDocsSummary: linkedDocsSummary || undefined,
+              caseContent: caseContent || undefined,
+              protocolContent: protocolContent || undefined
+            }
           };
         }
       }
@@ -408,13 +423,36 @@ async function generateRoleplayResponse(userInput: string, context: any): Promis
             role: 'system',
             content: (() => {
               const cfg = (context?.session?.config) as any;
-              const linked = cfg?.meta?.linkedDocsSummary ? `Resources: ${cfg.meta.linkedDocsSummary}` : '';
-              return `You are the role-play character for a training exercise.\n\nExercise: ${cfg?.title ?? 'Unnamed Exercise'}\nFocus hint: ${cfg?.focusHint ?? 'General practice'}\n${linked}\n\nFollow the scenario implied by the exercise title and focus. Stay consistent with the role. Be realistic and concise. Do not invent policies beyond provided resources. Respond naturally to the student's last message.`;
+              let systemPrompt = `Du är en rollspelskaraktär i en träningsövning för socionomstudenter.`;
+              
+              // Inject case content if available
+              if (cfg?.meta?.caseContent) {
+                systemPrompt += `\n\nFÖLJANDE CASE-INFORMATION DEFINIERAR DIN KARAKTÄR OCH SITUATION:\n${cfg.meta.caseContent}\n`;
+                systemPrompt += `\nAGERA EXAKT ENLIGT DENNA CASE-BESKRIVNING. Din karaktär, situation och bakgrund kommer från texten ovan.`;
+              } else {
+                // Fallback if no case content
+                systemPrompt += `\n\nDu är en "Orolig förälder" som har kontaktat socialtjänsten med oro för sitt barn. Du är genuint orolig för ditt barns välmående och kan vara emotionell, defensiv eller överväldigad.`;
+              }
+              
+              systemPrompt += `\n\nRIKTLINJER:
+- Håll dig strikt inom din definierade karaktär och situation
+- Var realistisk och trovärdig i dina svar
+- Svara på svenska
+- Låt samtalet utvecklas naturligt baserat på studentens input
+- Ge studenten möjlighet att träna aktivt lyssnande och professionell kommunikation
+- Svara kort och naturligt (1-2 meningar) som karaktären skulle göra`;
+
+              // Add protocol guidance if available
+              if (cfg?.meta?.protocolContent) {
+                systemPrompt += `\n\nTRÄNINGSFOKUS (för din information): Studenten tränar enligt följande protokoll:\n${cfg.meta.protocolContent}`;
+              }
+              
+              return systemPrompt;
             })()
           },
           {
             role: 'user',
-            content: `The student just said: "${userInput}". Reply in character.`
+            content: userInput
           }
         ],
         max_tokens: 150,
