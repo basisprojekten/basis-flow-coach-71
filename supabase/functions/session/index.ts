@@ -52,6 +52,7 @@ interface ExerciseConfig {
   };
   focusHint: string;
   protocols: string[];
+  meta?: { linkedDocsSummary?: string };
 }
 
 interface SessionState {
@@ -92,6 +93,7 @@ async function createSession(config: {
   
   // Get exercise configuration from database
   let exerciseConfig: ExerciseConfig;
+  let linkedDocsSummary = '';
   // Get exercise configuration from database with safe fallback
   const demoExerciseConfig: ExerciseConfig = {
     id: 'demo-001',
@@ -121,11 +123,11 @@ async function createSession(config: {
       console.log('Code resolution result', { hasError: !!codeError, found: !!codeRecord, targetId: codeRecord?.target_id });
       
       if (codeError || !codeRecord?.target_id) {
-        console.warn('Exercise code not found or query error. Falling back to demo exercise.', {
+        console.warn('Exercise code not found or query error.', {
           exerciseCode: config.exerciseCode,
           error: codeError?.message
         });
-        exerciseConfig = demoExerciseConfig;
+        throw { __type: 'EXERCISE_CODE_NOT_FOUND', message: 'Invalid or unknown exerciseCode', __httpStatus: 400 } as any;
       } else {
         // Now fetch the actual exercise using the target_id
         const { data: exercise, error: exerciseError } = await supabase
@@ -137,13 +139,29 @@ async function createSession(config: {
         console.log('Exercise fetch result', { hasError: !!exerciseError, found: !!exercise, exerciseId: codeRecord.target_id });
         
         if (exerciseError || !exercise) {
-          console.warn('Exercise not found for target_id. Falling back to demo exercise.', {
+          console.warn('Exercise not found for target_id.', {
             exerciseCode: config.exerciseCode,
             targetId: codeRecord.target_id,
             error: exerciseError?.message
           });
-          exerciseConfig = demoExerciseConfig;
+          throw { __type: 'EXERCISE_NOT_FOUND', message: 'Exercise not found for provided code', __httpStatus: 404 } as any;
         } else {
+          // Fetch linked documents (if any) to inform prompts
+          const { data: links, error: linksError } = await supabase
+            .from('exercise_documents')
+            .select('document_id')
+            .eq('exercise_id', exercise.id);
+          let documents: any[] = [];
+          if (!linksError && links && links.length) {
+            const docIds = links.map((l: any) => l.document_id);
+            const { data: docs } = await supabase
+              .from('documents')
+              .select('id, file_name, document_type')
+              .in('id', docIds);
+            documents = docs || [];
+          }
+          linkedDocsSummary = documents.length ? `Linked documents: ${documents.map(d => `${d.document_type}:${d.file_name}`).join(', ')}` : '';
+
           // Create exercise config with defaults for missing fields
           exerciseConfig = {
             id: exercise.id,
