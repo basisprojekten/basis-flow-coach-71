@@ -174,16 +174,17 @@ async function createSession(config: {
               skipRoleplayForGlobalFeedback: false
             },
             focusHint: exercise.focus_area || '', // Use focus_area as focusHint
-            protocols: ['basis-v1'] // Default protocol
+            protocols: ['basis-v1'], // Default protocol
+            meta: linkedDocsSummary ? { linkedDocsSummary } : undefined
           };
         }
       }
     } catch (err) {
-      console.warn('Unexpected error during exercise resolution. Falling back to demo exercise.', {
+      console.error('Unexpected error during exercise resolution', {
         exerciseCode: config.exerciseCode,
         error: String(err)
       });
-      exerciseConfig = demoExerciseConfig;
+      throw { __type: 'EXERCISE_RESOLUTION_ERROR', message: 'Failed to resolve exercise', details: String(err), __httpStatus: 500 } as any;
     }
   } else {
     // Default to demo exercise configuration when no exerciseCode is provided
@@ -195,7 +196,7 @@ async function createSession(config: {
   const initialMessage: ConversationMessage = {
     id: generateId(8),
     role: 'system',
-    content: `Welcome to your BASIS training session. You will be practicing conversation techniques with a concerned parent role. The scenario: A parent is worried about their child's academic progress and wants to discuss intervention strategies.`,
+    content: `Welcome to BASIS: "${exerciseConfig.title}". Focus: ${exerciseConfig.focusHint || 'General practice'}.${linkedDocsSummary ? ` ${linkedDocsSummary}` : ''}`,
     timestamp: new Date(),
     metadata: { type: 'session_start' }
   };
@@ -210,8 +211,8 @@ async function createSession(config: {
   // Insert session into database
   const insertPayload = {
     mode: config.mode,
-    exercise_id: config.exerciseCode,
-    lesson_id: config.lessonCode,
+    exercise_id: config.exerciseCode ? exerciseConfig.id : null,
+    lesson_id: config.lessonCode ?? null,
     state: sessionState,
     started_at: new Date().toISOString(),
     last_activity_at: new Date().toISOString()
@@ -231,7 +232,7 @@ async function createSession(config: {
 
   const session: SessionState = {
     id: dbSession.id,
-    exerciseId: config.exerciseCode,
+    exerciseId: exerciseConfig.id,
     lessonId: config.lessonCode,
     mode: config.mode,
     currentExerciseIndex: sessionState.currentExerciseIndex,
@@ -405,11 +406,15 @@ async function generateRoleplayResponse(userInput: string, context: any): Promis
         messages: [
           {
             role: 'system',
-            content: `You are a concerned parent character in a training simulation. You are worried about your child's academic progress and emotional well-being. You want to understand what support is available and how you can help at home. Stay in character as a worried but cooperative parent seeking help. Respond naturally and authentically to what the school professional just said.`
+            content: (() => {
+              const cfg = (context?.session?.config) as any;
+              const linked = cfg?.meta?.linkedDocsSummary ? `Resources: ${cfg.meta.linkedDocsSummary}` : '';
+              return `You are the role-play character for a training exercise.\n\nExercise: ${cfg?.title ?? 'Unnamed Exercise'}\nFocus hint: ${cfg?.focusHint ?? 'General practice'}\n${linked}\n\nFollow the scenario implied by the exercise title and focus. Stay consistent with the role. Be realistic and concise. Do not invent policies beyond provided resources. Respond naturally to the student's last message.`;
+            })()
           },
           {
             role: 'user',
-            content: `The school professional just said: "${userInput}". How do you respond as the concerned parent?`
+            content: `The student just said: "${userInput}". Reply in character.`
           }
         ],
         max_tokens: 150,
@@ -435,7 +440,7 @@ async function generateRoleplayResponse(userInput: string, context: any): Promis
 }
 
 // Real OpenAI-powered agent feedback generation
-async function generateAgentFeedback(content: string, conversationHistory: ConversationMessage[]): Promise<any> {
+async function generateAgentFeedback(content: string, conversationHistory: ConversationMessage[], exerciseConfig?: ExerciseConfig): Promise<any> {
   const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
   if (!openAIApiKey) {
     throw new Error('OPENAI_API_KEY not found in environment variables');
@@ -462,18 +467,11 @@ async function generateAgentFeedback(content: string, conversationHistory: Conve
         messages: [
           {
             role: 'system',
-            content: `You are an Analyst Agent providing retrospective feedback. Analyze ONLY what just happened in the student's response. Never give future advice. Return feedback as JSON with this exact structure:
-{
-  "type": "iterative_feedback",
-  "segment_id": "seg_" + random_8_chars,
-  "rubric": [
-    {"field": "empathy", "score": 1-5},
-    {"field": "clarity", "score": 1-5},
-    {"field": "boundaries", "score": 1-5}
-  ],
-  "evidence_quotes": ["quote from student response"],
-  "past_only_feedback": "retrospective analysis focusing only on what just happened"
-}`
+            content: (() => {
+              const focus = exerciseConfig?.focusHint ?? 'General';
+              const title = exerciseConfig?.title ?? 'Unnamed Exercise';
+              return `You are an Analyst Agent providing retrospective feedback for the exercise "${title}". Evaluate ONLY what just happened in the student's response. Focus specifically on: ${focus}. Never give future advice. Return feedback as JSON with this exact structure:\n{\n  "type": "iterative_feedback",\n  "segment_id": "seg_" + random_8_chars,\n  "rubric": [\n    {"field": "empathy", "score": 1-5},\n    {"field": "clarity", "score": 1-5},\n    {"field": "boundaries", "score": 1-5}\n  ],\n  "evidence_quotes": ["quote from student response"],\n  "past_only_feedback": "retrospective analysis focusing only on what just happened"\n}`;
+            })()
           },
           {
             role: 'user',
@@ -518,12 +516,11 @@ async function generateAgentFeedback(content: string, conversationHistory: Conve
         messages: [
           {
             role: 'system',
-            content: `You are a Navigator Agent providing feedforward guidance. Give ONLY future-focused guidance. Never analyze what happened. Return guidance as JSON with this exact structure:
-{
-  "type": "feedforward",
-  "guidance": "forward-looking guidance message",
-  "next_steps": ["action 1", "action 2"]
-}`
+            content: (() => {
+              const focus = exerciseConfig?.focusHint ?? 'General';
+              const title = exerciseConfig?.title ?? 'Unnamed Exercise';
+              return `You are a Navigator Agent for the exercise "${title}". Provide ONLY future-focused, actionable guidance aligned with the focus: ${focus}. Never analyze the past. Return guidance as JSON with this exact structure:\n{\n  "type": "feedforward",\n  "guidance": "forward-looking guidance message",\n  "next_steps": ["action 1", "action 2"]\n}`;
+            })()
           },
           {
             role: 'user',
@@ -647,12 +644,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
             initialGuidance
           });
         } catch (e: any) {
-          console.error('Session creation failed', { message: e?.message, details: e?.details });
+          const status = (e && typeof e === 'object' && '__httpStatus' in e) ? (e as any).__httpStatus : 500;
           return jsonResponse({
-            error: 'SESSION_CREATE_FAILED',
+            error: (e && typeof e === 'object' && '__type' in e) ? (e as any).__type : 'SESSION_CREATE_FAILED',
             message: e?.message || 'Failed to create session',
             details: e?.details
-          }, 500);
+          }, status);
         }
       }
 
@@ -708,7 +705,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         }
 
         // Generate real agent feedback
-        const agentFeedback = await generateAgentFeedback(content, session.conversationHistory);
+        const agentFeedback = await generateAgentFeedback(content, session.conversationHistory, session.config);
 
         // Get updated session state
         const updatedSession = await getSession(sessionId);
