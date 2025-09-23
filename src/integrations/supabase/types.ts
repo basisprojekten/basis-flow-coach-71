@@ -127,6 +127,7 @@ export type Database = {
           created_at: string
           focus_area: string
           id: string
+          instruction_document_id: string | null
           lesson_id: string | null
           title: string
         }
@@ -134,6 +135,7 @@ export type Database = {
           created_at?: string
           focus_area: string
           id?: string
+          instruction_document_id?: string | null
           lesson_id?: string | null
           title: string
         }
@@ -141,10 +143,18 @@ export type Database = {
           created_at?: string
           focus_area?: string
           id?: string
+          instruction_document_id?: string | null
           lesson_id?: string | null
           title?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "exercises_instruction_document_id_fkey"
+            columns: ["instruction_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "exercises_lesson_id_fkey"
             columns: ["lesson_id"]

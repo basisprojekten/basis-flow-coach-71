@@ -48,7 +48,7 @@ export class RoleplayAgent extends BaseAgent {
         ...context.conversationHistory,
         {
           role: 'system',
-          content: `You are a concerned parent character in a training simulation. Stay in character as a worried but cooperative parent seeking help for your child. Respond naturally to: "${userInput}"`
+          content: this.buildRoleplaySystemPrompt(context, userInput)
         },
         {
           role: 'user',
@@ -100,6 +100,22 @@ export class RoleplayAgent extends BaseAgent {
     }
 
     return response;
+  }
+
+  /**
+   * Build system prompt for roleplay, including instruction content if available
+   */
+  private buildRoleplaySystemPrompt(context: AgentContext, userInput: string): string {
+    let prompt = '';
+    
+    // Inject instruction content at the top if available
+    if (context.exerciseConfig?.meta?.instructionContent) {
+      prompt += `ÖVERGRIPANDE INSTRUKTIONER:\n${context.exerciseConfig.meta.instructionContent}\n\n`;
+    }
+    
+    prompt += `You are a concerned parent character in a training simulation. Stay in character as a worried but cooperative parent seeking help for your child. Respond naturally to: "${userInput}"`;
+    
+    return prompt;
   }
 
   /**

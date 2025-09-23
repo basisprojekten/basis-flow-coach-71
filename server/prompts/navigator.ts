@@ -6,6 +6,9 @@ interface ExerciseConfig {
   focus?: string;
   caseRole?: string;
   caseBackground?: string;
+  meta?: {
+    instructionContent?: string;
+  };
   [key: string]: any;
 }
 
@@ -13,6 +16,13 @@ interface ExerciseConfig {
  * Generate a system prompt for the Navigator agent based on exercise configuration
  */
 export function getNavigatorPrompt(exerciseConfig?: ExerciseConfig): string {
+  let prompt = '';
+  
+  // Inject instruction content at the top if available
+  if (exerciseConfig?.meta?.instructionContent) {
+    prompt += `ÖVERGRIPANDE INSTRUKTIONER:\n${exerciseConfig.meta.instructionContent}\n\n`;
+  }
+  
   const focus = exerciseConfig?.focus?.trim();
   const protocolContent = exerciseConfig?.meta?.protocolContent;
   
@@ -26,7 +36,7 @@ export function getNavigatorPrompt(exerciseConfig?: ExerciseConfig): string {
     briefing = "I den här övningen tränar du grundläggande aktivt lyssnande (minimal feedback, parafrasering, klargörande frågor, empati, struktur).";
   }
   
-  let prompt = `${briefing} Som din coach kommer jag att guida dig framåt utan att ge facit. Fokusera på att lyssna aktivt och svara naturligt utifrån situationen. Kom ihåg att det handlar om att utveckla din samtalsförmåga genom praktisk träning.`;
+  prompt += `${briefing} Som din coach kommer jag att guida dig framåt utan att ge facit. Fokusera på att lyssna aktivt och svara naturligt utifrån situationen. Kom ihåg att det handlar om att utveckla din samtalsförmåga genom praktisk träning.`;
   
   // Inject protocol content if available
   if (protocolContent) {

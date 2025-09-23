@@ -6,6 +6,9 @@ interface ExerciseConfig {
   focus?: string;
   caseRole?: string;
   caseBackground?: string;
+  meta?: {
+    instructionContent?: string;
+  };
   [key: string]: any;
 }
 
@@ -13,6 +16,13 @@ interface ExerciseConfig {
  * Generate a system prompt for the Analyst agent based on exercise configuration
  */
 export function getAnalystPrompt(exerciseConfig?: ExerciseConfig): string {
+  let prompt = '';
+  
+  // Inject instruction content at the top if available
+  if (exerciseConfig?.meta?.instructionContent) {
+    prompt += `ÖVERGRIPANDE INSTRUKTIONER:\n${exerciseConfig.meta.instructionContent}\n\n`;
+  }
+  
   const focus = exerciseConfig?.focus?.trim();
   const protocolContent = exerciseConfig?.meta?.protocolContent;
   
@@ -26,7 +36,7 @@ export function getAnalystPrompt(exerciseConfig?: ExerciseConfig): string {
     focusInstruction = "Ge kort, beteendeorienterad feedback på studentens aktiva lyssnande.";
   }
   
-  let prompt = `${focusInstruction}
+  prompt += `${focusInstruction}
 
 FEEDBACK-STRUKTUR (alltid tre delar):
 1. Observerat beteende - vad studenten gjorde

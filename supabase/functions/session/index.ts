@@ -132,7 +132,10 @@ async function createSession(config: {
         // Now fetch the actual exercise using the target_id
         const { data: exercise, error: exerciseError } = await supabase
           .from('exercises')
-          .select('*')
+          .select(`
+            *,
+            instruction_document:documents!exercises_instruction_document_id_fkey(content)
+          `)
           .eq('id', codeRecord.target_id)
           .maybeSingle();
         
@@ -189,7 +192,8 @@ async function createSession(config: {
             meta: { 
               linkedDocsSummary: linkedDocsSummary || undefined,
               caseContent: caseContent || undefined,
-              protocolContent: protocolContent || undefined
+              protocolContent: protocolContent || undefined,
+              instructionContent: exercise.instruction_document?.content || undefined
             }
           };
         }

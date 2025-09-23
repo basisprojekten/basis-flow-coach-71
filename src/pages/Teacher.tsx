@@ -91,6 +91,7 @@ const Teacher = () => {
   const [currentAccessCode, setCurrentAccessCode] = useState<any>(null);
   const [selectedProtocols, setSelectedProtocols] = useState<any[]>([]);
   const [selectedCase, setSelectedCase] = useState<any>(null);
+  const [selectedInstructionDocument, setSelectedInstructionDocument] = useState<any>(null);
   
   // My Exercises State
   const [allExercises, setAllExercises] = useState<any[]>([]);
@@ -266,7 +267,7 @@ const Teacher = () => {
   };
 
   // Upload document to library
-  const handleLibraryUpload = async (file: File, documentType: 'case' | 'protocol') => {
+  const handleLibraryUpload = async (file: File, documentType: 'case' | 'protocol' | 'instruction_document') => {
     if (!file.name.toLowerCase().endsWith('.docx')) {
       toast({
         title: "Invalid File Type",
@@ -391,6 +392,23 @@ const Teacher = () => {
         });
       }
     }
+
+    // Update exercise with instruction document if selected
+    if (selectedInstructionDocument) {
+      const { error: updateError } = await supabase
+        .from('exercises')
+        .update({ instruction_document_id: selectedInstructionDocument.id })
+        .eq('id', exerciseId);
+
+      if (updateError) {
+        console.error('Failed to link instruction document to exercise:', updateError);
+        toast({
+          title: "Warning",
+          description: "Exercise created but failed to link instruction document",
+          variant: "destructive"
+        });
+      }
+    }
   };
 
   // Optional Lesson Creator Functions
@@ -439,6 +457,7 @@ const Teacher = () => {
     setCurrentAccessCode(null);
     setSelectedProtocols([]);
     setSelectedCase(null);
+    setSelectedInstructionDocument(null);
     setStandaloneExerciseForm({ title: '', focus_area: '' });
   };
 
@@ -553,10 +572,10 @@ const Teacher = () => {
                     </div>
                   </div>
 
-                  {/* Document Selection */}
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold">Select Documents from Library</h3>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                   {/* Document Selection */}
+                   <div className="space-y-4">
+                     <h3 className="text-lg font-semibold">Select Documents from Library</h3>
+                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                       {/* Case Document Selection */}
                       <div className="space-y-2">
                         <Label>Case Document</Label>
@@ -583,47 +602,73 @@ const Teacher = () => {
                         )}
                       </div>
 
-                      {/* Protocol Documents Selection */}
-                      <div className="space-y-2">
-                        <Label>Protocol Documents</Label>
-                        <Select onValueChange={(value) => {
-                          const doc = documentLibrary.find(d => d.id === value);
-                          if (doc && !selectedProtocols.find(p => p.id === doc.id)) {
-                            setSelectedProtocols(prev => [...prev, doc]);
-                          }
-                        }}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select protocol documents" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {documentLibrary.filter(doc => doc.document_type === 'protocol').map((doc) => (
-                              <SelectItem key={doc.id} value={doc.id}>
-                                {doc.file_name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {selectedProtocols.length > 0 && (
-                          <div className="space-y-2">
-                            <Label className="text-sm">Selected Protocols ({selectedProtocols.length})</Label>
-                            {selectedProtocols.map((protocol) => (
-                              <div key={protocol.id} className="flex items-center justify-between p-2 bg-muted rounded-lg">
-                                <div className="flex items-center gap-2">
-                                  <CheckCircle className="h-4 w-4 text-green-500" />
-                                  <span className="text-sm">{protocol.file_name}</span>
-                                </div>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setSelectedProtocols(prev => prev.filter(p => p.id !== protocol.id))}
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                       {/* Protocol Documents Selection */}
+                       <div className="space-y-2">
+                         <Label>Protocol Documents</Label>
+                         <Select onValueChange={(value) => {
+                           const doc = documentLibrary.find(d => d.id === value);
+                           if (doc && !selectedProtocols.find(p => p.id === doc.id)) {
+                             setSelectedProtocols(prev => [...prev, doc]);
+                           }
+                         }}>
+                           <SelectTrigger>
+                             <SelectValue placeholder="Select protocol documents" />
+                           </SelectTrigger>
+                           <SelectContent>
+                             {documentLibrary.filter(doc => doc.document_type === 'protocol').map((doc) => (
+                               <SelectItem key={doc.id} value={doc.id}>
+                                 {doc.file_name}
+                               </SelectItem>
+                             ))}
+                           </SelectContent>
+                         </Select>
+                         {selectedProtocols.length > 0 && (
+                           <div className="space-y-2">
+                             <Label className="text-sm">Selected Protocols ({selectedProtocols.length})</Label>
+                             {selectedProtocols.map((protocol) => (
+                               <div key={protocol.id} className="flex items-center justify-between p-2 bg-muted rounded-lg">
+                                 <div className="flex items-center gap-2">
+                                   <CheckCircle className="h-4 w-4 text-green-500" />
+                                   <span className="text-sm">{protocol.file_name}</span>
+                                 </div>
+                                 <Button
+                                   variant="ghost"
+                                   size="sm"
+                                   onClick={() => setSelectedProtocols(prev => prev.filter(p => p.id !== protocol.id))}
+                                 >
+                                   <X className="h-4 w-4" />
+                                 </Button>
+                               </div>
+                             ))}
+                           </div>
+                         )}
+                       </div>
+
+                       {/* Instruction Document Selection */}
+                       <div className="space-y-2">
+                         <Label>Instruction Document (valfritt)</Label>
+                         <Select onValueChange={(value) => {
+                           const doc = documentLibrary.find(d => d.id === value);
+                           setSelectedInstructionDocument(doc);
+                         }}>
+                           <SelectTrigger>
+                             <SelectValue placeholder="Select instruction document" />
+                           </SelectTrigger>
+                           <SelectContent>
+                             {documentLibrary.filter(doc => doc.document_type === 'instruction_document').map((doc) => (
+                               <SelectItem key={doc.id} value={doc.id}>
+                                 {doc.file_name}
+                               </SelectItem>
+                             ))}
+                           </SelectContent>
+                         </Select>
+                         {selectedInstructionDocument && (
+                           <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
+                             <CheckCircle className="h-4 w-4 text-green-500" />
+                             <span className="text-sm">{selectedInstructionDocument.file_name}</span>
+                           </div>
+                         )}
+                       </div>
                     </div>
                   </div>
                   <div className="flex justify-end">
@@ -783,44 +828,62 @@ const Teacher = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* Upload Section */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Upload Case Document</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Input
-                        type="file"
-                        accept=".docx"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleLibraryUpload(file, 'case');
-                        }}
-                        className="cursor-pointer"
-                        disabled={uploadingToLibrary}
-                      />
-                    </CardContent>
-                  </Card>
+                 {/* Upload Section */}
+                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                   <Card>
+                     <CardHeader>
+                       <CardTitle className="text-base">Upload Case Document</CardTitle>
+                     </CardHeader>
+                     <CardContent>
+                       <Input
+                         type="file"
+                         accept=".docx"
+                         onChange={(e) => {
+                           const file = e.target.files?.[0];
+                           if (file) handleLibraryUpload(file, 'case');
+                         }}
+                         className="cursor-pointer"
+                         disabled={uploadingToLibrary}
+                       />
+                     </CardContent>
+                   </Card>
 
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Upload Protocol Document</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Input
-                        type="file"
-                        accept=".docx"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleLibraryUpload(file, 'protocol');
-                        }}
-                        className="cursor-pointer"
-                        disabled={uploadingToLibrary}
-                      />
-                    </CardContent>
-                  </Card>
-                </div>
+                   <Card>
+                     <CardHeader>
+                       <CardTitle className="text-base">Upload Protocol Document</CardTitle>
+                     </CardHeader>
+                     <CardContent>
+                       <Input
+                         type="file"
+                         accept=".docx"
+                         onChange={(e) => {
+                           const file = e.target.files?.[0];
+                           if (file) handleLibraryUpload(file, 'protocol');
+                         }}
+                         className="cursor-pointer"
+                         disabled={uploadingToLibrary}
+                       />
+                     </CardContent>
+                   </Card>
+
+                   <Card>
+                     <CardHeader>
+                       <CardTitle className="text-base">Upload Instruction Document</CardTitle>
+                     </CardHeader>
+                     <CardContent>
+                       <Input
+                         type="file"
+                         accept=".docx"
+                         onChange={(e) => {
+                           const file = e.target.files?.[0];
+                           if (file) handleLibraryUpload(file, 'instruction_document');
+                         }}
+                         className="cursor-pointer"
+                         disabled={uploadingToLibrary}
+                       />
+                     </CardContent>
+                   </Card>
+                 </div>
 
                 {uploadingToLibrary && (
                   <div className="flex items-center justify-center py-4">
@@ -839,8 +902,8 @@ const Teacher = () => {
                       <Loader2 className="h-6 w-6 animate-spin" />
                       <span className="ml-2">Loading documents...</span>
                     </div>
-                  ) : documentLibrary.length > 0 ? (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                   ) : documentLibrary.length > 0 ? (
+                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                       {/* Case Documents */}
                       <div>
                         <h4 className="font-medium mb-2">Case Documents</h4>
@@ -860,24 +923,43 @@ const Teacher = () => {
                         </div>
                       </div>
 
-                      {/* Protocol Documents */}
-                      <div>
-                        <h4 className="font-medium mb-2">Protocol Documents</h4>
-                        <div className="space-y-2">
-                          {documentLibrary.filter(doc => doc.document_type === 'protocol').map((doc) => (
-                            <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg">
-                              <div className="flex items-center gap-2">
-                                <FileText className="h-4 w-4 text-primary" />
-                                <span className="text-sm font-medium">{doc.file_name}</span>
-                              </div>
-                              <Badge variant="secondary">Protocol</Badge>
-                            </div>
-                          ))}
-                          {documentLibrary.filter(doc => doc.document_type === 'protocol').length === 0 && (
-                            <p className="text-sm text-muted-foreground">No protocol documents uploaded</p>
-                          )}
-                        </div>
-                      </div>
+                       {/* Protocol Documents */}
+                       <div>
+                         <h4 className="font-medium mb-2">Protocol Documents</h4>
+                         <div className="space-y-2">
+                           {documentLibrary.filter(doc => doc.document_type === 'protocol').map((doc) => (
+                             <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg">
+                               <div className="flex items-center gap-2">
+                                 <FileText className="h-4 w-4 text-primary" />
+                                 <span className="text-sm font-medium">{doc.file_name}</span>
+                               </div>
+                               <Badge variant="secondary">Protocol</Badge>
+                             </div>
+                           ))}
+                           {documentLibrary.filter(doc => doc.document_type === 'protocol').length === 0 && (
+                             <p className="text-sm text-muted-foreground">No protocol documents uploaded</p>
+                           )}
+                         </div>
+                       </div>
+
+                       {/* Instruction Documents */}
+                       <div>
+                         <h4 className="font-medium mb-2">Instruction Documents</h4>
+                         <div className="space-y-2">
+                           {documentLibrary.filter(doc => doc.document_type === 'instruction_document').map((doc) => (
+                             <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg">
+                               <div className="flex items-center gap-2">
+                                 <FileText className="h-4 w-4 text-primary" />
+                                 <span className="text-sm font-medium">{doc.file_name}</span>
+                               </div>
+                               <Badge variant="secondary">Instruktion</Badge>
+                             </div>
+                           ))}
+                           {documentLibrary.filter(doc => doc.document_type === 'instruction_document').length === 0 && (
+                             <p className="text-sm text-muted-foreground">No instruction documents uploaded</p>
+                           )}
+                         </div>
+                       </div>
                     </div>
                   ) : (
                     <div className="text-center py-12">

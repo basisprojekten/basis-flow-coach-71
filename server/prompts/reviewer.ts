@@ -6,6 +6,9 @@ interface ExerciseConfig {
   focus?: string;
   caseRole?: string;
   caseBackground?: string;
+  meta?: {
+    instructionContent?: string;
+  };
   [key: string]: any;
 }
 
@@ -13,6 +16,13 @@ interface ExerciseConfig {
  * Generate a system prompt for the Reviewer agent based on exercise configuration
  */
 export function getReviewerPrompt(exerciseConfig?: ExerciseConfig): string {
+  let prompt = '';
+  
+  // Inject instruction content at the top if available
+  if (exerciseConfig?.meta?.instructionContent) {
+    prompt += `ÖVERGRIPANDE INSTRUKTIONER:\n${exerciseConfig.meta.instructionContent}\n\n`;
+  }
+  
   const focus = exerciseConfig?.focus?.trim();
   
   let summaryFocus: string;
@@ -25,7 +35,7 @@ export function getReviewerPrompt(exerciseConfig?: ExerciseConfig): string {
     summaryFocus = "Helhetsbedömning av studentens prestationer inom hela basprotokollet (aktivt lyssnande, minimal feedback, parafrasering, klargörande frågor, empati, struktur).";
   }
   
-  const prompt = `${summaryFocus}
+  prompt += `${summaryFocus}
 
 ANALYSPROCESS:
 - Gör intern 0-4 bedömning (hiddenScore) för varje område
