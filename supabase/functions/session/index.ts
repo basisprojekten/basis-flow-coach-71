@@ -506,17 +506,17 @@ async function generateAgentFeedback(content: string, conversationHistory: Conve
           {
             role: 'system',
             content: (() => {
-              const focus = exerciseConfig?.focusHint ?? 'General';
-              const title = exerciseConfig?.title ?? 'Unnamed Exercise';
+              const focus = exerciseConfig?.focus || exerciseConfig?.focusHint || 'Allmän övning av aktivt lyssnande';
+              const title = exerciseConfig?.title ?? 'Namnlös övning';
               const protocolContent = exerciseConfig?.meta?.protocolContent;
               
-              let systemPrompt = `You are an Analyst Agent providing retrospective feedback for the exercise "${title}". Evaluate ONLY what just happened in the student's response. Focus specifically on: ${focus}. Never give future advice.`;
+              let systemPrompt = `Du är en Analytiker-agent som ger retrospektiv feedback för övningen "${title}". Analysera ENDAST vad som just hände i studentens svar. Fokusera särskilt på: ${focus}. Ge aldrig framtida råd.`;
               
               if (protocolContent) {
                 systemPrompt += `\n\nPROTOKOLL FÖR BEDÖMNING:\n${protocolContent}\n\nAnvänd detta protokoll som grund för din bedömning. Analysera hur väl studenten följer protokollets riktlinjer.`;
               }
               
-              systemPrompt += `\n\nReturn feedback as JSON with this exact structure:\n{\n  "type": "iterative_feedback",\n  "segment_id": "seg_" + random_8_chars,\n  "rubric": [\n    {"field": "empathy", "score": 1-5},\n    {"field": "clarity", "score": 1-5},\n    {"field": "boundaries", "score": 1-5}\n  ],\n  "evidence_quotes": ["quote from student response"],\n  "past_only_feedback": "retrospective analysis focusing only on what just happened"\n}`;
+              systemPrompt += `\n\nSvara med JSON i exakt denna struktur:\n{\n  "type": "iterative_feedback",\n  "segment_id": "seg_" + random_8_chars,\n  "rubric": [\n    {"field": "empathy", "score": 1-5},\n    {"field": "clarity", "score": 1-5},\n    {"field": "boundaries", "score": 1-5}\n  ],\n  "evidence_quotes": ["citat från studentens svar"],\n  "past_only_feedback": "Retrospektiv analys som fokuserar endast på vad som precis hände (max 2-3 meningar på svenska)"\n}`;
               
               return systemPrompt;
             })()
@@ -565,24 +565,26 @@ async function generateAgentFeedback(content: string, conversationHistory: Conve
           {
             role: 'system',
             content: (() => {
-              const focus = exerciseConfig?.focusHint ?? 'General';
-              const title = exerciseConfig?.title ?? 'Unnamed Exercise';
+              const focus = exerciseConfig?.focus || exerciseConfig?.focusHint || 'allmän övning av aktivt lyssnande';
+              const title = exerciseConfig?.title ?? 'Namnlös övning';
               const protocolContent = exerciseConfig?.meta?.protocolContent;
               
-              let systemPrompt = `You are a Navigator Agent for the exercise "${title}". Provide ONLY future-focused, actionable guidance aligned with the focus: ${focus}. Never analyze the past.`;
+              let systemPrompt = `Du är en Navigatör-agent för övningen "${title}". Ge ENDAST framåtriktad, handlingsbar vägledning som är anpassad till fokuset: ${focus}. Analysera aldrig det förflutna.`;
               
               if (protocolContent) {
                 systemPrompt += `\n\nPROTOKOLL FÖR VÄGLEDNING:\n${protocolContent}\n\nAnvänd detta protokoll för att guida studenten mot rätt tekniker och förhållningssätt i deras nästa steg.`;
               }
               
-              systemPrompt += `\n\nReturn guidance as JSON with this exact structure:\n{\n  "type": "feedforward",\n  "guidance": "forward-looking guidance message",\n  "next_steps": ["action 1", "action 2"]\n}`;
+              systemPrompt += `\n\nDin roll är att hjälpa studenten att engagera sig bättre med rollspelskaraktären i nästa interaktion. Fokusera på att guida studenten mot att använda tekniker från protokollet för att bygga bättre rapport och kommunikation med rollspelskaraktären.`;
+              
+              systemPrompt += `\n\nSvara med JSON i exakt denna struktur:\n{\n  "type": "feedforward",\n  "guidance": "framåtriktad vägledning på svenska (max 2-3 meningar)",\n  "next_steps": ["handling 1", "handling 2"]\n}`;
               
               return systemPrompt;
             })()
           },
           {
             role: 'user',
-            content: `Provide feedforward guidance for the student's next response. They just said: "${content}"`
+            content: `Ge framåtriktad vägledning för studentens nästa interaktion med rollspelskaraktären. Hur kan studenten förbättra sitt nästa svar för att bättre engagera sig med karaktären enligt fokuset "${exerciseConfig?.focus || exerciseConfig?.focusHint || 'aktivt lyssnande'}"?`
           }
         ],
         max_tokens: 300,
@@ -768,6 +770,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
         // Get updated session state
         const updatedSession = await getSession(sessionId);
 
+        // Remove rubric data from analyst feedback before sending to client (should be hidden from students)
+        const clientFeedback = { ...agentFeedback };
+        if (clientFeedback.analyst && clientFeedback.analyst.rubric) {
+          delete clientFeedback.analyst.rubric;
+        }
+
         return jsonResponse({
           session: {
             id: updatedSession!.id,
@@ -775,7 +783,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
             lastActivity: updatedSession!.metadata.lastActivityAt
           },
           aiResponse,
-          agentFeedback
+          agentFeedback: clientFeedback
         });
       }
 
