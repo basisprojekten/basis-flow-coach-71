@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useNavigate } from 'react-router-dom';
+import { useSession } from '@supabase/auth-helpers-react';
 import { useToast } from '@/hooks/use-toast';
 import { exerciseApi, lessonApi, codeApi } from '@/lib/api';
 import { supabase } from '@/integrations/supabase/client';
@@ -29,12 +30,30 @@ import {
   Loader2,
   Library,
   Eye,
-  Trash2
+  Trash2,
+  LogOut
 } from 'lucide-react';
 
 const Teacher = () => {
   const navigate = useNavigate();
+  const session = useSession();
   const { toast } = useToast();
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      toast({
+        title: "Utloggad",
+        description: "Du har loggats ut från lärarvyn",
+      });
+    } catch (error) {
+      toast({
+        title: "Fel vid utloggning",
+        description: "Ett fel uppstod när du försökte logga ut",
+        variant: "destructive",
+      });
+    }
+  };
   
   // Original exercise form for the old exercises tab
   const [exerciseForm, setExerciseForm] = useState({
@@ -451,10 +470,21 @@ const Teacher = () => {
                 <p className="text-sm text-muted-foreground">Create and manage training content</p>
               </div>
             </div>
-            <Badge variant="outline" className="text-primary border-primary">
-              <Settings className="h-3 w-3 mr-1" />
-              Admin Mode
-            </Badge>
+            <div className="flex items-center gap-3">
+              <Badge variant="outline" className="text-primary border-primary">
+                <Settings className="h-3 w-3 mr-1" />
+                Inloggad som {session?.user?.email}
+              </Badge>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={handleLogout}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Logga ut
+              </Button>
+            </div>
           </div>
         </div>
       </header>
