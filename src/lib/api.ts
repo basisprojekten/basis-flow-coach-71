@@ -328,7 +328,7 @@ export const sessionApi = {
         return supabaseApiRequest('end-session-and-review', { session_id: sessionId });
       } catch (error: any) {
         if (error instanceof BasisApiError) throw error;
-        throw new BasisApiError('Network error ending session', 'NETWORK_ERROR');
+        throw new BasisApiError(500, 'NETWORK_ERROR', 'Network error ending session');
       }
     } else {
       return apiRequest(`/session/${sessionId}/end`, {
