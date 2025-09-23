@@ -318,6 +318,25 @@ export const sessionApi = {
     }
   },
 
+  // End session and generate final feedback
+  async endSession(sessionId: string): Promise<{
+    finalFeedback: any;
+    exerciseTitle: string;
+  }> {
+    if (isUsingSupabaseFunctions) {
+      try {
+        return supabaseApiRequest('end-session-and-review', { session_id: sessionId });
+      } catch (error: any) {
+        if (error instanceof BasisApiError) throw error;
+        throw new BasisApiError('Network error ending session', 'NETWORK_ERROR');
+      }
+    } else {
+      return apiRequest(`/session/${sessionId}/end`, {
+        method: 'POST',
+      });
+    }
+  },
+
   // End session
   async end(sessionId: string): Promise<void> {
     if (isUsingSupabaseFunctions) {

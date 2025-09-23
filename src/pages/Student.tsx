@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import AgentCard from '@/components/AgentCard';
 import { AgentResponseSet, ConversationMessage } from '@/types/basis';
 import { sessionApi, transcriptApi, BasisApiError } from '@/lib/api';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   ArrowLeft,
   Send,
@@ -19,7 +20,9 @@ import {
   User,
   Bot,
   Play,
-  Loader2
+  Loader2,
+  Download,
+  CheckCircle
 } from 'lucide-react';
 
 const Student = () => {
@@ -38,6 +41,9 @@ const Student = () => {
   const [agentResponses, setAgentResponses] = useState<AgentResponseSet>({});
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isReviewComplete, setIsReviewComplete] = useState(false);
+  const [finalFeedback, setFinalFeedback] = useState<any>(null);
+  const [exerciseTitle, setExerciseTitle] = useState<string>('');
 
   const handleStartSession = async () => {
     if (!accessCode.trim()) {
@@ -224,6 +230,90 @@ const Student = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleEndSession = async () => {
+    if (!sessionId) return;
+
+    setIsLoading(true);
+
+    try {
+      const result = await sessionApi.endSession(sessionId);
+      
+      setFinalFeedback(result.finalFeedback);
+      setExerciseTitle(result.exerciseTitle || 'Träningssession');
+      setIsReviewComplete(true);
+
+      toast({
+        title: "Session Avslutad",
+        description: "Din slutgiltiga feedback är redo att granska",
+      });
+
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Kunde inte avsluta sessionen",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const downloadTranscript = () => {
+    if (!conversation.length && !finalFeedback) return;
+
+    // Format conversation history
+    let transcriptContent = `# Samtalstranskription: ${exerciseTitle}\n\n`;
+    
+    // Add conversation history
+    for (const message of conversation) {
+      const timestamp = message.timestamp.toLocaleTimeString('sv-SE');
+      
+      if (message.role === 'system') {
+        transcriptContent += `**System (${timestamp}):** ${message.content}\n\n`;
+      } else if (message.role === 'user') {
+        transcriptContent += `**Student (${timestamp}):** ${message.content}\n\n`;
+      } else if (message.role === 'assistant') {
+        transcriptContent += `**Rollperson (${timestamp}):** ${message.content}\n\n`;
+      }
+    }
+
+    // Add agent feedback throughout the conversation
+    if (Object.keys(agentResponses).length > 0) {
+      transcriptContent += `---\n\n## Agent Feedback Under Sessionen\n\n`;
+      
+      if (agentResponses.navigator) {
+        transcriptContent += `**Navigator:** ${agentResponses.navigator.guidance || agentResponses.navigator.user_prompt || 'Vägledning given'}\n\n`;
+      }
+      
+      if (agentResponses.analyst) {
+        transcriptContent += `**Analyst:** ${agentResponses.analyst.feedback || 'Feedback given'}\n\n`;
+      }
+    }
+
+    // Add final feedback
+    if (finalFeedback) {
+      transcriptContent += `---\n\n## Slutgiltig Feedback\n\n`;
+      transcriptContent += `**Reviewer:** ${finalFeedback.content}\n\n`;
+    }
+
+    // Create and download file
+    const blob = new Blob([transcriptContent], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `transkription-${exerciseTitle.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Transkription Nedladdad",
+      description: "Fullständig samtalstranskription har sparats",
+    });
   };
 
   if (!sessionMode) {
@@ -477,9 +567,10 @@ const Student = () => {
                 <Textarea
                   value={currentMessage}
                   onChange={(e) => setCurrentMessage(e.target.value)}
-                  placeholder="Type your response..."
+                  placeholder={isReviewComplete ? "Sessionen är avslutad" : "Type your response..."}
                   rows={2}
                   className="flex-1"
+                  disabled={isReviewComplete}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
@@ -489,7 +580,7 @@ const Student = () => {
                 />
                 <Button 
                   onClick={handleSendMessage}
-                  disabled={!currentMessage.trim() || isLoading}
+                  disabled={!currentMessage.trim() || isLoading || isReviewComplete}
                   size="lg"
                 >
                   {isLoading ? (
@@ -499,23 +590,59 @@ const Student = () => {
                   )}
                 </Button>
               </div>
+
+              {/* Session Control Buttons */}
+              <div className="flex gap-2 justify-center">
+                {!isReviewComplete ? (
+                  <Button 
+                    onClick={handleEndSession}
+                    disabled={isLoading || conversation.length < 2}
+                    variant="outline"
+                    size="lg"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                    )}
+                    Avsluta rollspel och begär feedback
+                  </Button>
+                ) : (
+                  <Button 
+                    onClick={downloadTranscript}
+                    variant="outline"
+                    size="lg"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Ladda ner transkription
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
 
           {/* Agent Feedback Panel */}
           <div className="space-y-6">
-            {/* Navigator Card */}
-            <AgentCard 
-              agentType="navigator"
-              response={agentResponses.navigator}
-            />
-
-            {/* Analyst Card */}
-            <AgentCard 
-              agentType="analyst"
-              response={agentResponses.analyst}
-              loading={isLoading && !agentResponses.analyst}
-            />
+            {!isReviewComplete ? (
+              <>
+                <AgentCard 
+                  agentType="navigator"
+                  response={agentResponses.navigator}
+                  loading={isLoading && !agentResponses.navigator}
+                />
+                <AgentCard 
+                  agentType="analyst"
+                  response={agentResponses.analyst}
+                  loading={isLoading && !agentResponses.analyst}
+                />
+              </>
+            ) : (
+              <AgentCard 
+                agentType="reviewer"
+                response={finalFeedback}
+                loading={false}
+              />
+            )}
           </div>
         </div>
       </div>
