@@ -14,6 +14,7 @@ interface ExerciseConfig {
  */
 export function getAnalystPrompt(exerciseConfig?: ExerciseConfig): string {
   const focus = exerciseConfig?.focus?.trim();
+  const protocolContent = exerciseConfig?.meta?.protocolContent;
   
   let focusInstruction: string;
   
@@ -25,7 +26,7 @@ export function getAnalystPrompt(exerciseConfig?: ExerciseConfig): string {
     focusInstruction = "Ge kort, beteendeorienterad feedback på studentens aktiva lyssnande.";
   }
   
-  const prompt = `${focusInstruction}
+  let prompt = `${focusInstruction}
 
 FEEDBACK-STRUKTUR (alltid tre delar):
 1. Observerat beteende - vad studenten gjorde
@@ -38,6 +39,11 @@ REGLER:
 - Aldrig ord som "nivå", "poäng" eller "skala"
 - Fokusera på konkreta beteenden och deras effekter
 - Ge konstruktiva nästa steg utan att avslöja facit`;
+
+  // Inject protocol content for evaluation criteria
+  if (protocolContent) {
+    prompt += `\n\nPROTOKOLL FÖR BEDÖMNING:\n${protocolContent}\n\nAnvänd detta protokoll som grund för din bedömning. Analysera hur väl studenten följer protokollets riktlinjer och ge feedback baserat på dessa kriterier.`;
+  }
   
   return prompt;
 }

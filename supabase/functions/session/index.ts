@@ -508,7 +508,17 @@ async function generateAgentFeedback(content: string, conversationHistory: Conve
             content: (() => {
               const focus = exerciseConfig?.focusHint ?? 'General';
               const title = exerciseConfig?.title ?? 'Unnamed Exercise';
-              return `You are an Analyst Agent providing retrospective feedback for the exercise "${title}". Evaluate ONLY what just happened in the student's response. Focus specifically on: ${focus}. Never give future advice. Return feedback as JSON with this exact structure:\n{\n  "type": "iterative_feedback",\n  "segment_id": "seg_" + random_8_chars,\n  "rubric": [\n    {"field": "empathy", "score": 1-5},\n    {"field": "clarity", "score": 1-5},\n    {"field": "boundaries", "score": 1-5}\n  ],\n  "evidence_quotes": ["quote from student response"],\n  "past_only_feedback": "retrospective analysis focusing only on what just happened"\n}`;
+              const protocolContent = exerciseConfig?.meta?.protocolContent;
+              
+              let systemPrompt = `You are an Analyst Agent providing retrospective feedback for the exercise "${title}". Evaluate ONLY what just happened in the student's response. Focus specifically on: ${focus}. Never give future advice.`;
+              
+              if (protocolContent) {
+                systemPrompt += `\n\nPROTOKOLL FÖR BEDÖMNING:\n${protocolContent}\n\nAnvänd detta protokoll som grund för din bedömning. Analysera hur väl studenten följer protokollets riktlinjer.`;
+              }
+              
+              systemPrompt += `\n\nReturn feedback as JSON with this exact structure:\n{\n  "type": "iterative_feedback",\n  "segment_id": "seg_" + random_8_chars,\n  "rubric": [\n    {"field": "empathy", "score": 1-5},\n    {"field": "clarity", "score": 1-5},\n    {"field": "boundaries", "score": 1-5}\n  ],\n  "evidence_quotes": ["quote from student response"],\n  "past_only_feedback": "retrospective analysis focusing only on what just happened"\n}`;
+              
+              return systemPrompt;
             })()
           },
           {
@@ -557,7 +567,17 @@ async function generateAgentFeedback(content: string, conversationHistory: Conve
             content: (() => {
               const focus = exerciseConfig?.focusHint ?? 'General';
               const title = exerciseConfig?.title ?? 'Unnamed Exercise';
-              return `You are a Navigator Agent for the exercise "${title}". Provide ONLY future-focused, actionable guidance aligned with the focus: ${focus}. Never analyze the past. Return guidance as JSON with this exact structure:\n{\n  "type": "feedforward",\n  "guidance": "forward-looking guidance message",\n  "next_steps": ["action 1", "action 2"]\n}`;
+              const protocolContent = exerciseConfig?.meta?.protocolContent;
+              
+              let systemPrompt = `You are a Navigator Agent for the exercise "${title}". Provide ONLY future-focused, actionable guidance aligned with the focus: ${focus}. Never analyze the past.`;
+              
+              if (protocolContent) {
+                systemPrompt += `\n\nPROTOKOLL FÖR VÄGLEDNING:\n${protocolContent}\n\nAnvänd detta protokoll för att guida studenten mot rätt tekniker och förhållningssätt i deras nästa steg.`;
+              }
+              
+              systemPrompt += `\n\nReturn guidance as JSON with this exact structure:\n{\n  "type": "feedforward",\n  "guidance": "forward-looking guidance message",\n  "next_steps": ["action 1", "action 2"]\n}`;
+              
+              return systemPrompt;
             })()
           },
           {

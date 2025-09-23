@@ -14,6 +14,7 @@ interface ExerciseConfig {
  */
 export function getNavigatorPrompt(exerciseConfig?: ExerciseConfig): string {
   const focus = exerciseConfig?.focus?.trim();
+  const protocolContent = exerciseConfig?.meta?.protocolContent;
   
   let briefing: string;
   
@@ -25,7 +26,12 @@ export function getNavigatorPrompt(exerciseConfig?: ExerciseConfig): string {
     briefing = "I den här övningen tränar du grundläggande aktivt lyssnande (minimal feedback, parafrasering, klargörande frågor, empati, struktur).";
   }
   
-  const prompt = `${briefing} Som din coach kommer jag att guida dig framåt utan att ge facit. Fokusera på att lyssna aktivt och svara naturligt utifrån situationen. Kom ihåg att det handlar om att utveckla din samtalsförmåga genom praktisk träning.`;
+  let prompt = `${briefing} Som din coach kommer jag att guida dig framåt utan att ge facit. Fokusera på att lyssna aktivt och svara naturligt utifrån situationen. Kom ihåg att det handlar om att utveckla din samtalsförmåga genom praktisk träning.`;
+  
+  // Inject protocol content if available
+  if (protocolContent) {
+    prompt += `\n\nPROTOKOLL FÖR DENNA ÖVNING:\n${protocolContent}\n\nAnvänd detta protokoll för att guida studenten mot rätt tekniker och förhållningssätt. Ge ledtrådar som hjälper dem följa protokollets riktlinjer utan att avslöja specifika svar.`;
+  }
   
   return prompt;
 }
