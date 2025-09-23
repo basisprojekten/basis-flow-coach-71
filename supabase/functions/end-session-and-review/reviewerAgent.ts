@@ -17,10 +17,11 @@ interface ExerciseConfig {
 interface ReviewerResponse {
   type: 'holistic_feedback';
   content: string;
+  rubric_summary: any[];
   strengths: string[];
-  developmentAreas: string[];
-  nextSteps: string[];
-  overallComment: string;
+  growth_areas: string[];
+  exemplar_quotes: any[];
+  summary: string;
 }
 
 export class ReviewerAgent {
@@ -109,10 +110,11 @@ Ge en helhetsbedömning enligt strukturen ovan.`;
       return {
         type: 'holistic_feedback',
         content: content,
+        rubric_summary: [],  // Empty array to prevent length errors
         strengths: sections.strengths,
-        developmentAreas: sections.developmentAreas,
-        nextSteps: sections.nextSteps,
-        overallComment: sections.overallComment
+        growth_areas: sections.developmentAreas,  // Correct field name
+        exemplar_quotes: [],  // Empty array to prevent length errors
+        summary: sections.overallComment
       };
 
     } catch (error) {
