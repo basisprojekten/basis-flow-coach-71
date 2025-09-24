@@ -1,8 +1,6 @@
 {
-  "name": "universal + supabase + bun",
-  "image": "mcr.microsoft.com/devcontainers/universal:2",
-  "features": {
-    "ghcr.io/devcontainers-extra/features/supabase-cli:1": {}
-  },
-  "postCreateCommand": "bash -lc 'if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash || echo ::warning::bun-install skipped; fi'"
+  "name": "basis-flow-coach-71 custom devcontainer",
+  "build": {
+    "dockerfile": "Dockerfile"
+  }
 }
