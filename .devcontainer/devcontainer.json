@@ -1,6 +1,15 @@
 {
-  "name": "basis-flow-coach-71 custom devcontainer",
+  "name": "Minimal Bun + Supabase CLI devcontainer",
   "build": {
-    "dockerfile": "Dockerfile"
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "image": null,
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "esbenp.prettier-vscode"
+      ]
+    }
   }
 }
