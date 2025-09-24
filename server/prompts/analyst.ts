@@ -23,16 +23,13 @@ export function getAnalystPrompt(exerciseConfig?: ExerciseConfig): string {
     prompt += `ÖVERGRIPANDE INSTRUKTIONER:\n${exerciseConfig.meta.instructionContent}\n\n`;
   }
   
-  const focus = exerciseConfig?.focus?.trim();
   const protocolContent = exerciseConfig?.meta?.protocolContent;
   
+  // Primary feedback focus from instruction content, with fallback
   let focusInstruction: string;
-  
-  if (focus) {
-    // Use teacher-specified focus for targeted feedback
-    focusInstruction = `Fokusera din analys på ${focus}. Ge feedback som hjälper studenten utveckla just denna färdighet.`;
+  if (exerciseConfig?.meta?.instructionContent) {
+    focusInstruction = "Analysera studentens prestationer enligt de specifika instruktioner som din lärare har gett. Ge feedback som hjälper studenten utveckla enligt dessa riktlinjer.";
   } else {
-    // Fallback to general feedback
     focusInstruction = "Ge kort, beteendeorienterad feedback på studentens aktiva lyssnande.";
   }
   
@@ -50,9 +47,9 @@ REGLER:
 - Fokusera på konkreta beteenden och deras effekter
 - Ge konstruktiva nästa steg utan att avslöja facit`;
 
-  // Inject protocol content for evaluation criteria
+  // Inject protocol content as SECONDARY reference material for evaluation criteria
   if (protocolContent) {
-    prompt += `\n\nPROTOKOLL FÖR BEDÖMNING:\n${protocolContent}\n\nAnvänd detta protokoll som grund för din bedömning. Analysera hur väl studenten följer protokollets riktlinjer och ge feedback baserat på dessa kriterier.`;
+    prompt += `\n\nREFERENSMATERIAL FÖR BEDÖMNING (SEKUNDÄRT):\n${protocolContent}\n\nOVAN TEXT ÄR ENDAST REFERENSMATERIAL. Använd detta som kontext för din bedömning men basera INTE din primära feedback på detta protokoll såvida inte de primära instruktionerna explicit säger att du ska göra det.`;
   }
   
   return prompt;

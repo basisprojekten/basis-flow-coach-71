@@ -83,8 +83,7 @@ const Teacher = () => {
 
   // Standalone Exercise Creator State
   const [standaloneExerciseForm, setStandaloneExerciseForm] = useState({
-    title: '',
-    focus_area: ''
+    title: ''
   });
   
   const [currentExercise, setCurrentExercise] = useState<any>(null);
@@ -356,10 +355,10 @@ const Teacher = () => {
 
   // Standalone Exercise Creator Functions
   const handleCreateStandaloneExercise = async () => {
-    if (!standaloneExerciseForm.title.trim() || !standaloneExerciseForm.focus_area.trim()) {
+    if (!standaloneExerciseForm.title.trim()) {
       toast({
         title: "Validation Error",
-        description: "Please provide both title and focus area",
+        description: "Please provide a title",
         variant: "destructive"
       });
       return;
@@ -371,7 +370,6 @@ const Teacher = () => {
         body: {
           type: 'exercise',
           title: standaloneExerciseForm.title,
-          focus_area: standaloneExerciseForm.focus_area,
           lesson_id: null // Standalone exercise
         }
       });
@@ -503,7 +501,7 @@ const Teacher = () => {
     setSelectedProtocols([]);
     setSelectedCase(null);
     setSelectedInstructionDocument(null);
-    setStandaloneExerciseForm({ title: '', focus_area: '' });
+    setStandaloneExerciseForm({ title: '' });
   };
 
   // Fetch data on component mount
@@ -595,27 +593,18 @@ const Teacher = () => {
                     Create a complete exercise with documents. No lesson required.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="standalone-exercise-title">Exercise Title</Label>
-                      <Input
-                        id="standalone-exercise-title"
-                        value={standaloneExerciseForm.title}
-                        onChange={(e) => setStandaloneExerciseForm(prev => ({ ...prev, title: e.target.value }))}
-                        placeholder="e.g., Difficult Conversation Practice"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="standalone-exercise-focus">Focus Area</Label>
-                      <Input
-                        id="standalone-exercise-focus"
-                        value={standaloneExerciseForm.focus_area}
-                        onChange={(e) => setStandaloneExerciseForm(prev => ({ ...prev, focus_area: e.target.value }))}
-                        placeholder="e.g., Active listening and empathy"
-                      />
-                    </div>
-                  </div>
+                 <CardContent className="space-y-4">
+                   <div className="grid grid-cols-1 gap-4">
+                     <div className="space-y-2">
+                       <Label htmlFor="standalone-exercise-title">Exercise Title</Label>
+                       <Input
+                         id="standalone-exercise-title"
+                         value={standaloneExerciseForm.title}
+                         onChange={(e) => setStandaloneExerciseForm(prev => ({ ...prev, title: e.target.value }))}
+                         placeholder="e.g., Difficult Conversation Practice"
+                       />
+                     </div>
+                   </div>
 
                    {/* Document Selection */}
                    <div className="space-y-4">
@@ -728,7 +717,7 @@ const Teacher = () => {
                   <div className="flex justify-end">
                     <Button 
                       onClick={handleCreateStandaloneExercise}
-                      disabled={isCreatingExercise || !standaloneExerciseForm.title.trim() || !standaloneExerciseForm.focus_area.trim()}
+                      disabled={isCreatingExercise || !standaloneExerciseForm.title.trim()}
                     >
                       {isCreatingExercise ? (
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -752,7 +741,7 @@ const Teacher = () => {
                           {currentExercise.title}
                         </CardTitle>
                         <CardDescription>
-                          Focus: {currentExercise.focus_area} | ID: {currentExercise.id}
+                          ID: {currentExercise.id}
                           {currentAccessCode && (
                             <Badge variant="secondary" className="ml-2">
                               Access Code: {currentAccessCode.id}
@@ -838,9 +827,6 @@ const Teacher = () => {
                             <Target className="h-4 w-4 text-primary" />
                             <span className="font-semibold">{exercise.title}</span>
                           </div>
-                          <p className="text-sm text-muted-foreground mb-1">
-                            Focus: {exercise.focus_area}
-                          </p>
                           <p className="text-sm text-muted-foreground">
                             Created: {new Date(exercise.created_at).toLocaleDateString()}
                           </p>

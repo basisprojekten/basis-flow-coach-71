@@ -103,17 +103,27 @@ export class RoleplayAgent extends BaseAgent {
   }
 
   /**
-   * Build system prompt for roleplay, including instruction content if available
+   * Build system prompt for roleplay, prioritizing instruction content
    */
   private buildRoleplaySystemPrompt(context: AgentContext, userInput: string): string {
     let prompt = '';
     
-    // Inject instruction content at the top if available
+    // Inject instruction content at the top as PRIMARY if available
     if (context.exerciseConfig?.meta?.instructionContent) {
-      prompt += `ÖVERGRIPANDE INSTRUKTIONER:\n${context.exerciseConfig.meta.instructionContent}\n\n`;
+      prompt += `ÖVERGRIPANDE INSTRUKTIONER (PRIMÄRA):\n${context.exerciseConfig.meta.instructionContent}\n\nFÖLJ DESSA INSTRUKTIONER STRIKT - de styr hur du ska agera som karaktär.\n\n`;
     }
     
-    prompt += `You are a concerned parent character in a training simulation. Stay in character as a worried but cooperative parent seeking help for your child. Respond naturally to: "${userInput}"`;
+    // Add case content if available
+    if (context.exerciseConfig?.meta?.caseContent) {
+      prompt += `KARAKTÄRSDEFINITION:\n${context.exerciseConfig.meta.caseContent}\n\n`;
+    }
+    
+    prompt += `Du är en rollspelskaraktär i en träningsövning. Agera enligt ovanstående instruktioner och karaktärsdefinition. Svara naturligt på: "${userInput}"`;
+    
+    // Add protocol content as secondary reference if available
+    if (context.exerciseConfig?.meta?.protocolContent) {
+      prompt += `\n\nREFERENSMATERIAL (SEKUNDÄRT):\n${context.exerciseConfig.meta.protocolContent}\n\nOvan text är endast bakgrundsinformation. Fokusera på de primära instruktionerna.`;
+    }
     
     return prompt;
   }

@@ -23,24 +23,21 @@ export function getNavigatorPrompt(exerciseConfig?: ExerciseConfig): string {
     prompt += `ÖVERGRIPANDE INSTRUKTIONER:\n${exerciseConfig.meta.instructionContent}\n\n`;
   }
   
-  const focus = exerciseConfig?.focus?.trim();
   const protocolContent = exerciseConfig?.meta?.protocolContent;
   
+  // Primary briefing from instruction content, with fallback
   let briefing: string;
-  
-  if (focus) {
-    // Use teacher-specified focus
-    briefing = `I den här övningen kommer du särskilt träna på ${focus}.`;
+  if (exerciseConfig?.meta?.instructionContent) {
+    briefing = "I den här övningen tränar du enligt de specifika instruktioner som din lärare har gett. Fokusera på att följa dessa riktlinjer noggrant.";
   } else {
-    // Fallback to general focus
     briefing = "I den här övningen tränar du grundläggande aktivt lyssnande (minimal feedback, parafrasering, klargörande frågor, empati, struktur).";
   }
   
   prompt += `${briefing} Som din coach kommer jag att guida dig framåt utan att ge facit. Fokusera på att lyssna aktivt och svara naturligt utifrån situationen. Kom ihåg att det handlar om att utveckla din samtalsförmåga genom praktisk träning.`;
   
-  // Inject protocol content if available
+  // Inject protocol content as SECONDARY reference material if available
   if (protocolContent) {
-    prompt += `\n\nPROTOKOLL FÖR DENNA ÖVNING:\n${protocolContent}\n\nAnvänd detta protokoll för att guida studenten mot rätt tekniker och förhållningssätt. Ge ledtrådar som hjälper dem följa protokollets riktlinjer utan att avslöja specifika svar.`;
+    prompt += `\n\nREFERENSMATERIAL (SEKUNDÄRT):\n${protocolContent}\n\nOVAN TEXT ÄR ENDAST BAKGRUNDSMATERIAL. Använd detta som kontext men basera INTE din primära coaching på detta protokoll såvida inte de primära instruktionerna explicit säger att du ska göra det. Fokusera främst på att följa de övergripande instruktionerna.`;
   }
   
   return prompt;

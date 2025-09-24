@@ -187,7 +187,7 @@ async function createSession(config: {
               mode: 'text' as const,
               skipRoleplayForGlobalFeedback: false
             },
-            focusHint: exercise.focus_area || '', // Use focus_area as focusHint
+            focusHint: '', // No longer using focus_area
             protocols: ['basis-v1'], // Default protocol
             meta: { 
               linkedDocsSummary: linkedDocsSummary || undefined,

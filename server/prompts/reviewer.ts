@@ -23,15 +23,13 @@ export function getReviewerPrompt(exerciseConfig?: ExerciseConfig): string {
     prompt += `ÖVERGRIPANDE INSTRUKTIONER:\n${exerciseConfig.meta.instructionContent}\n\n`;
   }
   
-  const focus = exerciseConfig?.focus?.trim();
+  const protocolContent = exerciseConfig?.meta?.protocolContent;
   
+  // Primary assessment focus from instruction content, with fallback
   let summaryFocus: string;
-  
-  if (focus) {
-    // Focus on teacher-specified area
-    summaryFocus = `Helhetsbedömning med särskilt fokus på ${focus}. Analysera hur studenten presterade inom detta område genom hela samtalet.`;
+  if (exerciseConfig?.meta?.instructionContent) {
+    summaryFocus = "Helhetsbedömning enligt de specifika instruktioner som din lärare har gett. Analysera hur studenten presterade enligt dessa riktlinjer genom hela samtalet.";
   } else {
-    // Focus on entire base protocol
     summaryFocus = "Helhetsbedömning av studentens prestationer inom hela basprotokollet (aktivt lyssnande, minimal feedback, parafrasering, klargörande frågor, empati, struktur).";
   }
   

@@ -125,7 +125,6 @@ export type Database = {
       exercises: {
         Row: {
           created_at: string
-          focus_area: string
           id: string
           instruction_document_id: string | null
           lesson_id: string | null
@@ -133,7 +132,6 @@ export type Database = {
         }
         Insert: {
           created_at?: string
-          focus_area: string
           id?: string
           instruction_document_id?: string | null
           lesson_id?: string | null
@@ -141,7 +139,6 @@ export type Database = {
         }
         Update: {
           created_at?: string
-          focus_area?: string
           id?: string
           instruction_document_id?: string | null
           lesson_id?: string | null
