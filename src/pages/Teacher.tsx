@@ -109,7 +109,9 @@ const Teacher = () => {
   
   const [isCreatingExercise, setIsCreatingExercise] = useState(false);
   const [isCreatingLesson, setIsCreatingLesson] = useState(false);
-  const [uploadingFiles, setUploadingFiles] = useState({});
+  const [uploadingFiles, setUploadingFiles] = useState({
+    instruction: false
+  });
 
   const handleCreateExercise = async () => {
     try {
@@ -263,6 +265,49 @@ const Teacher = () => {
       });
     } finally {
       setLoadingLibrary(false);
+    }
+  };
+
+  // Upload instruction document directly to exercise
+  const handleInstructionDocumentUpload = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.docx')) {
+      toast({
+        title: "Invalid File Type",
+        description: "Only .docx files are supported",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setUploadingFiles(prev => ({ ...prev, instruction: true }));
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('document_type', 'instruction_document');
+      // Don't set exercise_id - upload to library for now
+
+      const { data, error } = await supabase.functions.invoke('document-uploader', {
+        body: formData
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        setSelectedInstructionDocument(data.document);
+        toast({
+          title: "Success",
+          description: "Instruction document uploaded successfully!"
+        });
+      }
+    } catch (error) {
+      console.error('Failed to upload instruction document:', error);
+      toast({
+        title: "Error",
+        description: "Failed to upload instruction document. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setUploadingFiles(prev => ({ ...prev, instruction: false }));
     }
   };
 
@@ -644,31 +689,40 @@ const Teacher = () => {
                          )}
                        </div>
 
-                       {/* Instruction Document Selection */}
-                       <div className="space-y-2">
-                         <Label>Instruction Document (valfritt)</Label>
-                         <Select onValueChange={(value) => {
-                           const doc = documentLibrary.find(d => d.id === value);
-                           setSelectedInstructionDocument(doc);
-                         }}>
-                           <SelectTrigger>
-                             <SelectValue placeholder="Select instruction document" />
-                           </SelectTrigger>
-                           <SelectContent>
-                             {documentLibrary.filter(doc => doc.document_type === 'instruction_document').map((doc) => (
-                               <SelectItem key={doc.id} value={doc.id}>
-                                 {doc.file_name}
-                               </SelectItem>
-                             ))}
-                           </SelectContent>
-                         </Select>
-                         {selectedInstructionDocument && (
-                           <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
-                             <CheckCircle className="h-4 w-4 text-green-500" />
-                             <span className="text-sm">{selectedInstructionDocument.file_name}</span>
-                           </div>
-                         )}
-                       </div>
+                        {/* Instruction Document Upload */}
+                        <div className="space-y-2">
+                          <Label>Instruktionsdokument (valfritt)</Label>
+                          <Card>
+                            <CardContent className="pt-4">
+                              <Input
+                                type="file"
+                                accept=".docx"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) handleInstructionDocumentUpload(file);
+                                }}
+                                className="cursor-pointer"
+                                disabled={uploadingFiles.instruction}
+                              />
+                              <p className="text-xs text-muted-foreground mt-2">
+                                Ladda upp ett .docx-dokument med specifika instruktioner för denna övning
+                              </p>
+                            </CardContent>
+                          </Card>
+                          {selectedInstructionDocument && (
+                            <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
+                              <CheckCircle className="h-4 w-4 text-green-500" />
+                              <span className="text-sm">{selectedInstructionDocument.file_name}</span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setSelectedInstructionDocument(null)}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
                     </div>
                   </div>
                   <div className="flex justify-end">

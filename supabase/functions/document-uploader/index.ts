@@ -31,7 +31,7 @@ serve(async (req) => {
     const formData = await req.formData();
     const file = formData.get('file') as File;
     const exercise_id = formData.get('exercise_id') as string;
-    const document_type = formData.get('document_type') as string; // 'case' or 'protocol'
+    const document_type = formData.get('document_type') as string; // 'case', 'protocol', or 'instruction_document'
 
     if (!file) {
       return new Response(JSON.stringify({ 
@@ -44,10 +44,10 @@ serve(async (req) => {
     }
 
 
-    if (!document_type || !['case', 'protocol'].includes(document_type)) {
+    if (!document_type || !['case', 'protocol', 'instruction_document'].includes(document_type)) {
       return new Response(JSON.stringify({ 
         error: 'VALIDATION_ERROR', 
-        message: 'Document type must be either "case" or "protocol"' 
+        message: 'Document type must be "case", "protocol", or "instruction_document"' 
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
