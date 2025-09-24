@@ -75,6 +75,11 @@ serve(async (req) => {
               document_type,
               file_name
             )
+          ),
+          instruction_document:documents!exercises_instruction_document_id_fkey (
+            id,
+            file_name,
+            content
           )
         `)
         .eq('id', sessionData.exercise_id)
@@ -124,15 +129,23 @@ serve(async (req) => {
       .filter(Boolean)
       .join('\n\n');
 
+    const instructionContent = exerciseData?.instruction_document?.content || '';
+    const instructionName = exerciseData?.instruction_document?.file_name || '';
+    const focusHint = instructionContent
+      ? `Följ primärinstruktionen${instructionName ? ` i "${instructionName}"` : ''}.`
+      : 'Allmän konversationsanalys';
+
     const exerciseConfig = {
-      focusHint: exerciseData?.focus_area || 'Allmän konversationsanalys',
+      focusHint,
       title: exerciseData?.title || 'Träningssession',
       meta: {
-        protocolContent: protocolContent || 'BASIS-protokoll: Aktivt lyssnande, minimal feedback, parafrasering, klargörande frågor, empati, struktur.'
+        protocolContent: protocolContent || 'BASIS-protokoll: Aktivt lyssnande, minimal feedback, parafrasering, klargörande frågor, empati, struktur.',
+        instructionContent: instructionContent || undefined,
+        instructionDocumentName: instructionName || undefined
       }
     };
 
-    console.log(`Analyzing transcript with focus: ${exerciseConfig.focusHint}`);
+    console.log(`Analyzing transcript with focus: ${focusHint}`);
 
     // 5. Generate final feedback
     const protocols = protocolsData.map(p => p.id) || ['basis-protocol'];

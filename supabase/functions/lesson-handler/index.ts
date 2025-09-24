@@ -29,6 +29,63 @@ const supabase = createClient(
   }
 );
 
+interface MinimalCasePayload {
+  role?: string;
+  background?: string;
+  goals?: string | null;
+}
+
+async function createSupportingCase(
+  casePayload: MinimalCasePayload | undefined,
+  fallbackTitle: string
+): Promise<string> {
+  const roleSource =
+    typeof casePayload?.role === 'string' && casePayload.role.trim().length > 0
+      ? casePayload.role.trim()
+      : fallbackTitle.trim().length > 0
+        ? fallbackTitle.trim()
+        : 'Generated role';
+
+  const backgroundSource =
+    typeof casePayload?.background === 'string' && casePayload.background.trim().length > 0
+      ? casePayload.background.trim()
+      : 'Background pending. Update this case once documents are linked.';
+
+  const rawGoals = casePayload?.goals ?? '';
+  const goalsString = typeof rawGoals === 'string' ? rawGoals : String(rawGoals);
+  const trimmedGoals = goalsString.trim();
+  const goals = trimmedGoals.length > 0 ? trimmedGoals : null;
+
+  const rawText = [
+    `Role: ${roleSource}`,
+    `Background: ${backgroundSource}`,
+    `Goals: ${goals ?? 'None specified'}`
+  ].join('\n');
+
+  const caseTitle = `${roleSource} scenario`;
+
+  const { data, error } = await supabase
+    .from('cases')
+    .insert({
+      title: caseTitle,
+      raw_text: rawText,
+      structured_json: {
+        role: roleSource,
+        background: backgroundSource,
+        goals
+      }
+    })
+    .select('id')
+    .single();
+
+  if (error || !data) {
+    console.error('Case insert failed in lesson-handler:', error);
+    throw new Error(error?.message ?? 'Unknown error while creating case');
+  }
+
+  return (data as { id: string }).id;
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   // 1) Robust CORS preflight
   if (req.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
@@ -44,16 +101,73 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (!type) return json({ error: 'VALIDATION_ERROR', message: 'Missing type' }, 400);
 
     if (type === 'exercise') {
-      const { title, focus_area, lesson_id } = body as { title?: string; focus_area?: string; lesson_id?: string | null };
+      const exercisePayload = body as {
+        title?: string;
+        focus_hint?: string | null;
+        focusHint?: string | null;
+        lesson_id?: string | null;
+        lessonId?: string | null;
+        instruction_document_id?: string | null;
+        instructionDocumentId?: string | null;
+        case?: MinimalCasePayload;
+        protocol_stack?: string[];
+        protocolStack?: string[];
+        toggles?: Record<string, unknown>;
+      };
 
-      if (!title || !focus_area) {
-        return json({ error: 'VALIDATION_ERROR', message: 'title and focus_area are required' }, 400);
+      const title = exercisePayload.title?.toString().trim() ?? '';
+
+      if (title.length === 0) {
+        return json({ error: 'VALIDATION_ERROR', message: 'title is required' }, 400);
       }
 
-      // Insert exercise first
+      let focusHintValue: string | null = null;
+      const rawFocus = exercisePayload.focus_hint ?? exercisePayload.focusHint;
+      if (typeof rawFocus === 'string') {
+        const trimmed = rawFocus.trim();
+        focusHintValue = trimmed.length > 0 ? trimmed : null;
+      } else if (rawFocus != null) {
+        const trimmed = String(rawFocus).trim();
+        focusHintValue = trimmed.length > 0 ? trimmed : null;
+      }
+
+      const protocolSource = exercisePayload.protocol_stack ?? exercisePayload.protocolStack;
+      const protocolStack = Array.isArray(protocolSource) ? protocolSource : [];
+
+      const toggles =
+        exercisePayload.toggles && typeof exercisePayload.toggles === 'object'
+          ? exercisePayload.toggles
+          : {};
+
+      const lessonId = exercisePayload.lesson_id ?? exercisePayload.lessonId ?? null;
+      const instructionDocumentId =
+        exercisePayload.instruction_document_id ?? exercisePayload.instructionDocumentId ?? null;
+
+      let caseId: string;
+      try {
+        caseId = await createSupportingCase(exercisePayload.case, title);
+      } catch (error) {
+        console.error('Failed to provision case for exercise:', error);
+        return json({
+          error: 'DATABASE_ERROR',
+          message: 'Failed to create supporting case for exercise',
+          details: error instanceof Error ? error.message : error
+        }, 500);
+      }
+
+      const insertPayload: Record<string, unknown> = {
+        title,
+        case_id: caseId,
+        focus_hint: focusHintValue,
+        protocols: protocolStack,
+        toggles,
+        lesson_id: lessonId,
+        instruction_document_id: instructionDocumentId
+      };
+
       const { data: exercise, error: exErr } = await supabase
         .from('exercises')
-        .insert({ title, focus_area, ...(lesson_id ? { lesson_id } : {}) })
+        .insert(insertPayload)
         .select('*')
         .single();
 

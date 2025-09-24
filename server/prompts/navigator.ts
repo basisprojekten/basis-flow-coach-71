@@ -8,6 +8,8 @@ interface ExerciseConfig {
   caseBackground?: string;
   meta?: {
     instructionContent?: string;
+    protocolContent?: string;
+    caseContent?: string;
   };
   [key: string]: any;
 }
@@ -16,29 +18,59 @@ interface ExerciseConfig {
  * Generate a system prompt for the Navigator agent based on exercise configuration
  */
 export function getNavigatorPrompt(exerciseConfig?: ExerciseConfig): string {
-  let prompt = '';
-  
-  // Inject instruction content at the top if available
-  if (exerciseConfig?.meta?.instructionContent) {
-    prompt += `ÖVERGRIPANDE INSTRUKTIONER:\n${exerciseConfig.meta.instructionContent}\n\n`;
+  const meta = exerciseConfig?.meta ?? {};
+  const instructionContent = meta.instructionContent?.trim();
+
+  const defaultPrimaryInstruction =
+    'Inga specifika lärarinstruktioner angavs. Anta standarduppdraget: ge framåtriktad coaching som hjälper studenten att utveckla aktivt lyssnande (minimal feedback, parafrasering, klargörande frågor, empati, struktur) och guida alltid mot nästa steg utan att avslöja facit.';
+
+  const promptSections: string[] = [];
+  const primaryInstruction = instructionContent && instructionContent.length > 0
+    ? instructionContent
+    : defaultPrimaryInstruction;
+
+  promptSections.push(`PRIMÄR INSTRUKTION (STYRANDE):\n${primaryInstruction}`);
+
+  const backgroundSections: string[] = [];
+
+  backgroundSections.push(
+    [
+      'STANDARDSTÖD FÖR NAVIGATORN:',
+      '- Var coachande och framåtblickande utan att ge facit.',
+      '- Hjälp studenten rikta sin nästa handling mot övningens mål.',
+      '- Uppmuntra trygghet, egen reflektion och fortsatt utforskande.'
+    ].join('\n')
+  );
+
+  if (exerciseConfig?.focus) {
+    backgroundSections.push(`ANGIVET TRÄNINGSFOKUS:\n${exerciseConfig.focus}`);
   }
-  
-  const protocolContent = exerciseConfig?.meta?.protocolContent;
-  
-  // Primary briefing from instruction content, with fallback
-  let briefing: string;
-  if (exerciseConfig?.meta?.instructionContent) {
-    briefing = "I den här övningen tränar du enligt de specifika instruktioner som din lärare har gett. Fokusera på att följa dessa riktlinjer noggrant.";
-  } else {
-    briefing = "I den här övningen tränar du grundläggande aktivt lyssnande (minimal feedback, parafrasering, klargörande frågor, empati, struktur).";
+
+  const caseDetails: string[] = [];
+  if (exerciseConfig?.caseRole) {
+    caseDetails.push(`Roll: ${exerciseConfig.caseRole}`);
   }
-  
-  prompt += `${briefing} Som din coach kommer jag att guida dig framåt utan att ge facit. Fokusera på att lyssna aktivt och svara naturligt utifrån situationen. Kom ihåg att det handlar om att utveckla din samtalsförmåga genom praktisk träning.`;
-  
-  // Inject protocol content as SECONDARY reference material if available
-  if (protocolContent) {
-    prompt += `\n\nREFERENSMATERIAL (SEKUNDÄRT):\n${protocolContent}\n\nOVAN TEXT ÄR ENDAST BAKGRUNDSMATERIAL. Använd detta som kontext men basera INTE din primära coaching på detta protokoll såvida inte de primära instruktionerna explicit säger att du ska göra det. Fokusera främst på att följa de övergripande instruktionerna.`;
+  if (exerciseConfig?.caseBackground) {
+    caseDetails.push(`Scenario: ${exerciseConfig.caseBackground}`);
   }
-  
-  return prompt;
+  if (meta.caseContent) {
+    caseDetails.push(`Karaktärs-/caseinformation:\n${meta.caseContent}`);
+  }
+  if (caseDetails.length > 0) {
+    backgroundSections.push(`CASEKONTEKST:\n${caseDetails.join('\n')}`);
+  }
+
+  if (meta.protocolContent) {
+    backgroundSections.push(
+      `PROTOKOLLREFERENS (SEKUNDÄR):\n${meta.protocolContent}\n\nDenna text är bakgrundsmaterial. Använd den endast som stöd för att tolka den primära instruktionen.`
+    );
+  }
+
+  if (backgroundSections.length > 0) {
+    promptSections.push(
+      `SEKUNDÄR KONTEXT OCH REFERENSMATERIAL:\n${backgroundSections.join('\n\n')}\n\nUtgå alltid från den primära instruktionen och konsultera bakgrundsmaterialet enbart som stöd.`
+    );
+  }
+
+  return promptSections.join('\n\n').trim();
 }

@@ -106,26 +106,61 @@ export class RoleplayAgent extends BaseAgent {
    * Build system prompt for roleplay, prioritizing instruction content
    */
   private buildRoleplaySystemPrompt(context: AgentContext, userInput: string): string {
-    let prompt = '';
-    
-    // Inject instruction content at the top as PRIMARY if available
-    if (context.exerciseConfig?.meta?.instructionContent) {
-      prompt += `ÖVERGRIPANDE INSTRUKTIONER (PRIMÄRA):\n${context.exerciseConfig.meta.instructionContent}\n\nFÖLJ DESSA INSTRUKTIONER STRIKT - de styr hur du ska agera som karaktär.\n\n`;
+    const meta = context.exerciseConfig?.meta ?? {};
+    const instructionContent = meta.instructionContent?.trim();
+
+    const defaultPrimaryInstruction =
+      `Inga specifika lärarinstruktioner angavs. Anta standarduppdraget: gestalta ${context.exerciseConfig?.caseRole || 'en orolig förälder'} som söker stöd kring sitt barns välmående och fortsätt att reagera autentiskt på studentens senaste yttrande.`;
+
+    const promptSections: string[] = [];
+    const primaryInstruction = instructionContent && instructionContent.length > 0
+      ? instructionContent
+      : defaultPrimaryInstruction;
+
+    promptSections.push(`PRIMÄR INSTRUKTION (STYRANDE):\n${primaryInstruction}`);
+
+    const backgroundSections: string[] = [];
+
+    backgroundSections.push(
+      [
+        'STANDARDREFERENS FÖR ROLLSPELSAGENTEN:',
+        '- Håll dig strikt i karaktär och svara på svenska.',
+        '- Spegla karaktärens känsloläge och motivationer.',
+        '- Svara kort och naturligt (1-3 meningar) för att stödja studentens träning.'
+      ].join('\n')
+    );
+
+    const caseDetails: string[] = [];
+    if (meta.caseContent) {
+      caseDetails.push(`Karaktärsbeskrivning:\n${meta.caseContent}`);
     }
-    
-    // Add case content if available
-    if (context.exerciseConfig?.meta?.caseContent) {
-      prompt += `KARAKTÄRSDEFINITION:\n${context.exerciseConfig.meta.caseContent}\n\n`;
+    if (context.exerciseConfig?.caseRole) {
+      caseDetails.push(`Roll: ${context.exerciseConfig.caseRole}`);
     }
-    
-    prompt += `Du är en rollspelskaraktär i en träningsövning. Agera enligt ovanstående instruktioner och karaktärsdefinition. Svara naturligt på: "${userInput}"`;
-    
-    // Add protocol content as secondary reference if available
-    if (context.exerciseConfig?.meta?.protocolContent) {
-      prompt += `\n\nREFERENSMATERIAL (SEKUNDÄRT):\n${context.exerciseConfig.meta.protocolContent}\n\nOvan text är endast bakgrundsinformation. Fokusera på de primära instruktionerna.`;
+    if (context.exerciseConfig?.caseBackground) {
+      caseDetails.push(`Scenario: ${context.exerciseConfig.caseBackground}`);
     }
-    
-    return prompt;
+    if (caseDetails.length > 0) {
+      backgroundSections.push(`CASEKONTEKST:\n${caseDetails.join('\n')}`);
+    }
+
+    if (meta.protocolContent) {
+      backgroundSections.push(
+        `TRÄNINGSFOKUS (SEKUNDÄR):\n${meta.protocolContent}\n\nDetta är bakgrundsmaterial. Låt den primära instruktionen styra hur du agerar.`
+      );
+    }
+
+    backgroundSections.push(
+      `AKTUELLT STUDENTUTTALANDE (KONTEXT):\n"${userInput}"\n\nBesvara detta yttrande enligt den primära instruktionen och i linje med bakgrundsmaterialet.`
+    );
+
+    if (backgroundSections.length > 0) {
+      promptSections.push(
+        `SEKUNDÄR KONTEXT OCH REFERENSMATERIAL:\n${backgroundSections.join('\n\n')}\n\nBakgrundsmaterialet finns för att stödja den primära instruktionen.`
+      );
+    }
+
+    return promptSections.join('\n\n').trim();
   }
 
   /**

@@ -12,6 +12,17 @@ interface ExerciseCasePayload {
   goals?: string | null;
 }
 
+interface InsertExercisePayload {
+  id: string;
+  title: string;
+  caseId: string;
+  protocolStack?: string[];
+  toggles?: ExerciseToggles;
+  focusHint?: string | null;
+  lessonId?: string | null;
+  instructionDocumentId?: string | null;
+}
+
 interface ExercisesRequestBody {
   action: 'create' | 'list' | 'get';
   title?: string;
@@ -19,6 +30,8 @@ interface ExercisesRequestBody {
   case?: ExerciseCasePayload;
   toggles?: ExerciseToggles;
   focusHint?: string;
+  lessonId?: string | null;
+  instructionDocumentId?: string | null;
   exerciseId?: string;
 }
 
@@ -55,48 +68,62 @@ function generateDisplayCode(prefix: string): string {
 }
 
 async function insertCase(caseData: ExerciseCasePayload) {
-  const caseId = `case_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`;
-  
-  // Create structured case data that matches the actual database schema
+  const role = caseData.role.trim();
+  const background = caseData.background.trim();
+  const rawGoals = caseData.goals ?? '';
+  const goalsString = typeof rawGoals === 'string' ? rawGoals : String(rawGoals);
+  const trimmedGoals = goalsString.trim();
+  const goals = trimmedGoals.length > 0 ? trimmedGoals : null;
+
   const structuredData = {
-    role: caseData.role,
-    background: caseData.background,
-    goals: caseData.goals || null
+    role,
+    background,
+    goals
   };
-  
+
+  const rawText = [
+    `Role: ${role}`,
+    `Background: ${background}`,
+    `Goals: ${goals ?? 'None specified'}`
+  ].join('\n');
+
+  const caseTitle = role ? `${role} scenario` : 'Generated scenario';
+
   const { data, error } = await supabase
     .from('cases')
     .insert({
-      id: caseId,
-      title: `Case for ${caseData.role}`,
-      raw_text: `Role: ${caseData.role}\nBackground: ${caseData.background}\nGoals: ${caseData.goals || 'None specified'}`,
+      title: caseTitle,
+      raw_text: rawText,
       structured_json: structuredData
     })
-    .select()
+    .select('id, title, raw_text, structured_json')
     .single();
 
-  if (error) {
+  if (error || !data) {
     console.error('❌ Case insertion failed:', error);
-    throw new Error(`Failed to create case: ${error.message}`);
+    throw new Error(`Failed to create case: ${error?.message ?? 'Unknown error'}`);
   }
 
-  return { caseId, record: data };
+  return data;
 }
 
-async function insertExercise(payload: {
-  id: string;
-  title: string;
-  caseId: string;
-  protocolStack?: string[];
-  toggles?: ExerciseToggles;
-  focusHint?: string;
-}) {
+async function insertExercise(payload: InsertExercisePayload) {
+  const protocols = Array.isArray(payload.protocolStack) ? payload.protocolStack : [];
+  const toggles =
+    payload.toggles && typeof payload.toggles === 'object' ? payload.toggles : {};
+  const focusHint = payload.focusHint?.toString().trim() ?? null;
+
   const { data, error } = await supabase
     .from('exercises')
     .insert({
       id: payload.id,
       title: payload.title,
-      focus_area: payload.focusHint || 'General training'
+      case_id: payload.caseId,
+      protocols,
+      toggles,
+      focus_hint: focusHint,
+      lesson_id: payload.lessonId ?? null,
+      instruction_document_id: payload.instructionDocumentId ?? null
     })
     .select()
     .single();
@@ -159,9 +186,24 @@ async function fetchExerciseWithCode(exerciseId: string) {
 }
 
 async function handleCreate(body: ExercisesRequestBody) {
-  const { title, protocolStack, case: caseData, toggles, focusHint } = body;
+  const {
+    title,
+    protocolStack,
+    case: caseData,
+    toggles,
+    focusHint,
+    lessonId,
+    instructionDocumentId
+  } = body as ExercisesRequestBody & {
+    lessonId?: string | null;
+    instructionDocumentId?: string | null;
+  };
 
-  if (!title || !caseData?.role || !caseData?.background) {
+  const trimmedTitle = title?.trim();
+  const trimmedRole = caseData?.role?.trim();
+  const trimmedBackground = caseData?.background?.trim();
+
+  if (!trimmedTitle || !trimmedRole || !trimmedBackground) {
     return jsonResponse({
       error: 'MISSING_REQUIRED_FIELDS',
       message: 'title, case.role, and case.background are required'
@@ -170,14 +212,30 @@ async function handleCreate(body: ExercisesRequestBody) {
 
   const exerciseId = generateExerciseId();
 
-  const { caseId } = await insertCase(caseData);
+  const goalsInput = caseData?.goals;
+  const goalsString =
+    typeof goalsInput === 'string'
+      ? goalsInput
+      : goalsInput != null
+        ? String(goalsInput)
+        : '';
+  const sanitizedCase: ExerciseCasePayload = {
+    role: trimmedRole,
+    background: trimmedBackground,
+    goals: goalsString.trim().length > 0 ? goalsString.trim() : null
+  };
+
+  const caseRecord = await insertCase(sanitizedCase);
+  const { id: caseId } = caseRecord as { id: string };
   const exerciseRecord = await insertExercise({
     id: exerciseId,
-    title,
+    title: trimmedTitle,
     caseId,
     protocolStack,
     toggles,
-    focusHint
+    focusHint,
+    lessonId: lessonId ?? null,
+    instructionDocumentId: instructionDocumentId ?? null
   });
   const accessCode = await upsertExerciseCode(exerciseId);
 
