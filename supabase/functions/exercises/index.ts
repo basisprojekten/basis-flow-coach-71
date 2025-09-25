@@ -84,9 +84,7 @@ async function insertCase(caseData: ExerciseCasePayload) {
 }
 
 async function insertExercise(payload: {
-  id: string;
   title: string;
-  caseId?: string;
   protocolStack?: string[];
   toggles?: ExerciseToggles;
   instructionDocumentId?: string;
@@ -94,7 +92,6 @@ async function insertExercise(payload: {
   const { data, error } = await supabase
     .from('exercises')
     .insert({
-      id: payload.id,
       title: payload.title,
       instruction_document_id: payload.instructionDocumentId || null
     })
@@ -171,29 +168,16 @@ async function handleCreate(body: ExercisesRequestBody) {
     }, 400);
   }
 
-  console.log('🔄 Generating exercise ID...');
-  const exerciseId = generateExerciseId();
-
-  // Create case only if case data is provided
-  let caseId: string | undefined;
-  if (caseData?.role && caseData?.background) {
-    console.log('📄 Creating case...');
-    const result = await insertCase(caseData);
-    caseId = result.caseId;
-  }
-
   console.log('🏋️ Creating exercise record...');
   const exerciseRecord = await insertExercise({
-    id: exerciseId,
     title,
-    caseId,
     protocolStack,
     toggles,
     instructionDocumentId
   });
   
   console.log('🎟️ Creating access code...');
-  const accessCode = await upsertExerciseCode(exerciseId);
+  const accessCode = await upsertExerciseCode(exerciseRecord.id);
 
   console.log('✅ Exercise created successfully:', exerciseRecord.id);
   return jsonResponse({
