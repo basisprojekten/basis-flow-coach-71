@@ -205,7 +205,7 @@ serve(async (req) => {
     console.error('Error in document-uploader function:', error);
     return new Response(JSON.stringify({ 
       error: 'INTERNAL_ERROR', 
-      message: error.message || 'Unexpected server error' 
+      message: error instanceof Error ? error.message : 'Unexpected server error' 
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -366,29 +366,29 @@ const Teacher = () => {
 
     setIsCreatingExercise(true);
     try {
-      const { data, error } = await supabase.functions.invoke('lesson-handler', {
+      const { data, error } = await supabase.functions.invoke('exercises', {
         body: {
-          type: 'exercise',
+          action: 'create',
           title: standaloneExerciseForm.title,
-          lesson_id: null // Standalone exercise
+          instructionDocumentId: selectedInstructionDocument?.id
         }
       });
 
       if (error) throw error;
 
-      if (data.success) {
+      if (data.id) {
         setCurrentExercise(data.exercise);
-        setCurrentAccessCode(data.code);
+        setCurrentAccessCode({ id: data.code });
         
         // If documents are selected, link them to the exercise
-        await linkDocumentsToExercise(data.exercise.id);
+        await linkDocumentsToExercise(data.id);
         
         // Refresh exercises list
         await fetchAllExercises();
         
         toast({
           title: "Success",
-          description: `Exercise created successfully! Access code: ${data.code.id}`
+          description: `Exercise created successfully! Access code: ${data.code}`
         });
       }
     } catch (error) {

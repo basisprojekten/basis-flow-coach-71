@@ -119,7 +119,7 @@ Ge en helhetsbedömning enligt strukturen ovan.`;
 
     } catch (error) {
       console.error('Error generating reviewer response:', error);
-      throw new Error(`Failed to generate final feedback: ${error.message}`);
+      throw new Error(`Failed to generate final feedback: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

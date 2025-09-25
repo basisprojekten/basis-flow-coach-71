@@ -18,7 +18,7 @@ interface ExercisesRequestBody {
   protocolStack?: string[];
   case?: ExerciseCasePayload;
   toggles?: ExerciseToggles;
-  focusHint?: string;
+  instructionDocumentId?: string;
   exerciseId?: string;
 }
 
@@ -86,17 +86,17 @@ async function insertCase(caseData: ExerciseCasePayload) {
 async function insertExercise(payload: {
   id: string;
   title: string;
-  caseId: string;
+  caseId?: string;
   protocolStack?: string[];
   toggles?: ExerciseToggles;
-  focusHint?: string;
+  instructionDocumentId?: string;
 }) {
   const { data, error } = await supabase
     .from('exercises')
     .insert({
       id: payload.id,
       title: payload.title,
-      focus_area: payload.focusHint || 'General training'
+      instruction_document_id: payload.instructionDocumentId || null
     })
     .select()
     .single();
@@ -159,25 +159,31 @@ async function fetchExerciseWithCode(exerciseId: string) {
 }
 
 async function handleCreate(body: ExercisesRequestBody) {
-  const { title, protocolStack, case: caseData, toggles, focusHint } = body;
+  const { title, protocolStack, case: caseData, toggles, instructionDocumentId } = body;
 
-  if (!title || !caseData?.role || !caseData?.background) {
+  if (!title) {
     return jsonResponse({
       error: 'MISSING_REQUIRED_FIELDS',
-      message: 'title, case.role, and case.background are required'
+      message: 'title is required'
     }, 400);
   }
 
   const exerciseId = generateExerciseId();
 
-  const { caseId } = await insertCase(caseData);
+  // Create case only if case data is provided
+  let caseId: string | undefined;
+  if (caseData?.role && caseData?.background) {
+    const result = await insertCase(caseData);
+    caseId = result.caseId;
+  }
+
   const exerciseRecord = await insertExercise({
     id: exerciseId,
     title,
     caseId,
     protocolStack,
     toggles,
-    focusHint
+    instructionDocumentId
   });
   const accessCode = await upsertExerciseCode(exerciseId);
 

@@ -52,7 +52,7 @@ interface ExerciseConfig {
   };
   focusHint: string;
   protocols: string[];
-  meta?: { linkedDocsSummary?: string; caseContent?: string; protocolContent?: string; };
+  meta?: { linkedDocsSummary?: string; caseContent?: string; protocolContent?: string; instructionContent?: string; };
 }
 
 interface SessionState {
@@ -510,11 +510,11 @@ async function generateAgentFeedback(content: string, conversationHistory: Conve
           {
             role: 'system',
             content: (() => {
-              const focus = exerciseConfig?.focus || exerciseConfig?.focusHint || 'Allmän övning av aktivt lyssnande';
+              const instructionContent = exerciseConfig?.meta?.instructionContent || 'Allmän övning av aktivt lyssnande';
               const title = exerciseConfig?.title ?? 'Namnlös övning';
               const protocolContent = exerciseConfig?.meta?.protocolContent;
               
-              let systemPrompt = `Du är en Analytiker-agent som ger retrospektiv feedback för övningen "${title}". Analysera ENDAST vad som just hände i studentens svar. Fokusera särskilt på: ${focus}. Ge aldrig framtida råd.`;
+              let systemPrompt = `Du är en Analytiker-agent som ger retrospektiv feedback för övningen "${title}". Analysera ENDAST vad som just hände i studentens svar. Följ instruktionerna: ${instructionContent}. Ge aldrig framtida råd.`;
               
               if (protocolContent) {
                 systemPrompt += `\n\nPROTOKOLL FÖR BEDÖMNING:\n${protocolContent}\n\nAnvänd detta protokoll som grund för din bedömning. Analysera hur väl studenten följer protokollets riktlinjer.`;
@@ -569,11 +569,11 @@ async function generateAgentFeedback(content: string, conversationHistory: Conve
           {
             role: 'system',
             content: (() => {
-              const focus = exerciseConfig?.focus || exerciseConfig?.focusHint || 'allmän övning av aktivt lyssnande';
+              const instructionContent = exerciseConfig?.meta?.instructionContent || 'allmän övning av aktivt lyssnande';
               const title = exerciseConfig?.title ?? 'Namnlös övning';
               const protocolContent = exerciseConfig?.meta?.protocolContent;
               
-              let systemPrompt = `Du är en Navigatör-agent för övningen "${title}". Ge ENDAST framåtriktad, handlingsbar vägledning som är anpassad till fokuset: ${focus}. Analysera aldrig det förflutna.`;
+              let systemPrompt = `Du är en Navigatör-agent för övningen "${title}". Ge ENDAST framåtriktad, handlingsbar vägledning enligt instruktionerna: ${instructionContent}. Analysera aldrig det förflutna.`;
               
               if (protocolContent) {
                 systemPrompt += `\n\nPROTOKOLL FÖR VÄGLEDNING:\n${protocolContent}\n\nAnvänd detta protokoll för att guida studenten mot rätt tekniker och förhållningssätt i deras nästa steg.`;
@@ -588,7 +588,7 @@ async function generateAgentFeedback(content: string, conversationHistory: Conve
           },
           {
             role: 'user',
-            content: `Ge framåtriktad vägledning för studentens nästa interaktion med rollspelskaraktären. Hur kan studenten förbättra sitt nästa svar för att bättre engagera sig med karaktären enligt fokuset "${exerciseConfig?.focus || exerciseConfig?.focusHint || 'aktivt lyssnande'}"?`
+            content: `Ge framåtriktad vägledning för studentens nästa interaktion med rollspelskaraktären. Hur kan studenten förbättra sitt nästa svar för att bättre engagera sig med karaktären enligt instruktionerna "${exerciseConfig?.meta?.instructionContent || 'aktivt lyssnande'}"?`
           }
         ],
         max_tokens: 300,
