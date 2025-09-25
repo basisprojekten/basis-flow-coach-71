@@ -1,6 +1,10 @@
 # BASIS Training Platform
-klockan är bara barnet
+
 Advanced conversation technique training with AI-powered agents for feedforward guidance, iterative analysis, and comprehensive review.
+
+## 🧹 Repository Cleanup Notice
+
+This repository has been cleaned up to maintain only the `main` branch. All development and test branches have been consolidated or removed to streamline the codebase. For branch cleanup procedures, see [`BRANCH_CLEANUP_GUIDE.md`](./BRANCH_CLEANUP_GUIDE.md).
 
 ## Project Overview
 
