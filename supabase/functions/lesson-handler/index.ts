@@ -44,16 +44,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (!type) return json({ error: 'VALIDATION_ERROR', message: 'Missing type' }, 400);
 
     if (type === 'exercise') {
-      const { title, focus_area, lesson_id } = body as { title?: string; focus_area?: string; lesson_id?: string | null };
+      const { title, lesson_id } = body as { title?: string; lesson_id?: string | null };
 
-      if (!title || !focus_area) {
-        return json({ error: 'VALIDATION_ERROR', message: 'title and focus_area are required' }, 400);
+      if (!title) {
+        return json({ error: 'VALIDATION_ERROR', message: 'title is required' }, 400);
       }
 
       // Insert exercise first
       const { data: exercise, error: exErr } = await supabase
         .from('exercises')
-        .insert({ title, focus_area, ...(lesson_id ? { lesson_id } : {}) })
+        .insert({ title, ...(lesson_id ? { lesson_id } : {}) })
         .select('*')
         .single();
 

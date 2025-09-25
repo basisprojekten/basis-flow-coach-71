@@ -159,24 +159,30 @@ async function fetchExerciseWithCode(exerciseId: string) {
 }
 
 async function handleCreate(body: ExercisesRequestBody) {
+  console.log('📥 Exercise creation request:', JSON.stringify(body, null, 2));
+  
   const { title, protocolStack, case: caseData, toggles, instructionDocumentId } = body;
 
   if (!title) {
+    console.log('❌ Missing title in request');
     return jsonResponse({
       error: 'MISSING_REQUIRED_FIELDS',
       message: 'title is required'
     }, 400);
   }
 
+  console.log('🔄 Generating exercise ID...');
   const exerciseId = generateExerciseId();
 
   // Create case only if case data is provided
   let caseId: string | undefined;
   if (caseData?.role && caseData?.background) {
+    console.log('📄 Creating case...');
     const result = await insertCase(caseData);
     caseId = result.caseId;
   }
 
+  console.log('🏋️ Creating exercise record...');
   const exerciseRecord = await insertExercise({
     id: exerciseId,
     title,
@@ -185,8 +191,11 @@ async function handleCreate(body: ExercisesRequestBody) {
     toggles,
     instructionDocumentId
   });
+  
+  console.log('🎟️ Creating access code...');
   const accessCode = await upsertExerciseCode(exerciseId);
 
+  console.log('✅ Exercise created successfully:', exerciseRecord.id);
   return jsonResponse({
     id: exerciseRecord.id,
     code: accessCode.id,
