@@ -112,6 +112,11 @@ const Teacher = () => {
     instruction: false
   });
 
+  // Model configuration state
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [modelConfigurations, setModelConfigurations] = useState<any[]>([]);
+  const [modelConfigLoading, setModelConfigLoading] = useState(false);
+
   const handleCreateExercise = async () => {
     try {
       // Validate required fields
@@ -504,6 +509,87 @@ const Teacher = () => {
     setStandaloneExerciseForm({ title: '' });
   };
 
+  // Model configuration functions
+  const fetchAvailableModels = async () => {
+    try {
+      setModelConfigLoading(true);
+      const response = await supabase.functions.invoke('models');
+      if (response.error) throw response.error;
+      setAvailableModels(response.data.models || []);
+    } catch (error) {
+      console.error('Error fetching models:', error);
+      toast({
+        title: "Fel",
+        description: "Kunde inte hämta tillgängliga modeller",
+        variant: "destructive",
+      });
+    } finally {
+      setModelConfigLoading(false);
+    }
+  };
+
+  const fetchModelConfigurations = async () => {
+    try {
+      const response = await supabase.functions.invoke('model-config');
+      if (response.error) throw response.error;
+      setModelConfigurations(response.data.configurations || []);
+    } catch (error) {
+      console.error('Error fetching model configurations:', error);
+      toast({
+        title: "Fel",
+        description: "Kunde inte hämta modellkonfigurationer",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const updateModelConfiguration = async (tier: string, modelName: string) => {
+    try {
+      const response = await supabase.functions.invoke('model-config', {
+        body: { tier, model_name: modelName }
+      });
+      
+      if (response.error) throw response.error;
+      
+      toast({
+        title: "Framgång",
+        description: "Modellkonfiguration uppdaterad",
+      });
+      
+      // Refresh configurations
+      fetchModelConfigurations();
+    } catch (error) {
+      console.error('Error updating model configuration:', error);
+      toast({
+        title: "Fel",
+        description: "Kunde inte uppdatera modellkonfiguration",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSaveModelChanges = async () => {
+    try {
+      for (const config of modelConfigurations) {
+        if (config.hasChanged) {
+          await updateModelConfiguration(config.tier, config.model_name);
+        }
+      }
+      
+      toast({
+        title: "Framgång",
+        description: "Alla modellkonfigurationer sparade",
+      });
+    } catch (error) {
+      console.error('Error saving model changes:', error);
+      toast({
+        title: "Fel",
+        description: "Kunde inte spara alla ändringar",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Fetch data on component mount
   useEffect(() => {
     fetchCodes();
@@ -553,30 +639,34 @@ const Teacher = () => {
 
       <div className="container mx-auto px-6 py-8">
         <Tabs defaultValue="exercise-creator" className="space-y-8">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="exercise-creator" className="flex items-center gap-2">
               <Target className="h-4 w-4" />
-              Exercise Creator
+              Övningar
             </TabsTrigger>
             <TabsTrigger value="my-exercises" className="flex items-center gap-2">
               <Eye className="h-4 w-4" />
-              My Exercises
+              Mina Övningar
             </TabsTrigger>
             <TabsTrigger value="document-library" className="flex items-center gap-2">
               <Library className="h-4 w-4" />
-              Document Library
+              Dokumentbibliotek
             </TabsTrigger>
             <TabsTrigger value="lesson-creator" className="flex items-center gap-2">
               <BookOpen className="h-4 w-4" />
-              Lesson Creator
+              Lektionshantering
+            </TabsTrigger>
+            <TabsTrigger value="model-settings" className="flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              Modellinställningar
             </TabsTrigger>
             <TabsTrigger value="exercises" className="flex items-center gap-2">
               <Target className="h-4 w-4" />
-              Old Exercises
+              Gamla Övningar
             </TabsTrigger>
             <TabsTrigger value="codes" className="flex items-center gap-2">
               <Code className="h-4 w-4" />
-              Generated Codes
+              Genererade Koder
             </TabsTrigger>
           </TabsList>
 
@@ -1049,6 +1139,87 @@ const Teacher = () => {
                     )}
                     Create Lesson
                   </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Model Configuration */}
+          <TabsContent value="model-settings" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="h-5 w-5 text-primary" />
+                  AI-modellkonfiguration
+                </CardTitle>
+                <CardDescription>
+                  Hantera vilka AI-modeller som används för olika typer av interaktioner
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  <div className="flex gap-4">
+                    <Button
+                      onClick={() => {
+                        fetchAvailableModels();
+                        fetchModelConfigurations();
+                      }}
+                      disabled={modelConfigLoading}
+                    >
+                      {modelConfigLoading ? "Laddar..." : "Hämta modeller"}
+                    </Button>
+                  </div>
+
+                  {modelConfigurations.length > 0 && (
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-medium">Modellkonfigurationer</h3>
+                      
+                      {modelConfigurations.map((config) => (
+                        <div key={config.tier} className="border rounded-lg p-4 space-y-2">
+                          <Label htmlFor={`model-${config.tier}`}>
+                            {config.label} ({config.tier})
+                          </Label>
+                          <Select
+                            value={config.model_name}
+                            onValueChange={(value) => {
+                              setModelConfigurations(prev =>
+                                prev.map(c =>
+                                  c.tier === config.tier
+                                    ? { ...c, model_name: value, hasChanged: true }
+                                    : c
+                                )
+                              );
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Välj modell" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableModels.map((model) => (
+                                <SelectItem key={model} value={model}>
+                                  {model}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ))}
+
+                      <Button
+                        onClick={handleSaveModelChanges}
+                        disabled={!modelConfigurations.some(c => c.hasChanged)}
+                        className="w-full"
+                      >
+                        Spara ändringar
+                      </Button>
+                    </div>
+                  )}
+
+                  {availableModels.length === 0 && !modelConfigLoading && (
+                    <p className="text-muted-foreground">
+                      Klicka på "Hämta modeller" för att ladda tillgängliga modeller från OpenAI.
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
